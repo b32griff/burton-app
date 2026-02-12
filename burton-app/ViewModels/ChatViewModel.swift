@@ -201,7 +201,7 @@ class ChatViewModel {
                 self.isStreaming = false
                 self.persistConversation()
                 if !failed {
-                    self.triggerProfileUpdateIfNeeded()
+                    self.triggerProfileUpdateIfNeeded(hasVideo: true)
                 }
             }
             try? FileManager.default.removeItem(at: url)
@@ -321,13 +321,13 @@ class ChatViewModel {
         }
     }
 
-    private func triggerProfileUpdateIfNeeded() {
+    private func triggerProfileUpdateIfNeeded(hasVideo: Bool = false) {
         guard currentConversation.messages.count >= 2,
               let memoryManager
         else { return }
 
         Task {
-            await memoryManager.updateProfile(from: currentConversation)
+            await memoryManager.updateProfile(from: currentConversation, hasVideo: hasVideo)
 
             await MainActor.run {
                 self.appState?.updateSwingProfile(memoryManager.swingProfile)

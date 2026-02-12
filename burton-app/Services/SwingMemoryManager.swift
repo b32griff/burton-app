@@ -38,8 +38,8 @@ class SwingMemoryManager {
         return parts.joined(separator: "\n")
     }
 
-    func updateProfile(from conversation: Conversation) async {
-        debugLog("updateProfile called with \(conversation.messages.count) messages")
+    func updateProfile(from conversation: Conversation, hasVideo: Bool = false) async {
+        debugLog("updateProfile called with \(conversation.messages.count) messages, hasVideo: \(hasVideo)")
         guard conversation.messages.count >= 2 else {
             debugLog("Skipped — not enough messages")
             return
@@ -79,6 +79,8 @@ class SwingMemoryManager {
         - "priority": "high", "medium", or "low"
 
         Recommend 3-6 drills total. Prioritize drills that directly address the user's biggest issues.
+
+        \(hasVideo ? "This conversation includes VIDEO ANALYSIS. You can add, change, or REMOVE drills and issues based on what you see. If the user has fixed a previous issue, remove it and its drills." : "This is a TEXT-ONLY conversation. You may ADD new drills and issues, but keep all existing recommendedDrills from the current profile — do NOT remove any existing drills unless the user explicitly says they've fixed the issue.")
 
         Respond with ONLY valid JSON (no markdown, no explanation):
         {
@@ -157,8 +159,17 @@ class SwingMemoryManager {
                         }
                     }
                     if !newDrills.isEmpty {
-                        swingProfile.recommendedDrills = newDrills
-                        debugLog("Updated \(newDrills.count) recommended drills")
+                        if hasVideo {
+                            // Video analysis: full replace — AI can remove drills for fixed issues
+                            swingProfile.recommendedDrills = newDrills
+                            debugLog("Replaced drills from video analysis: \(newDrills.count)")
+                        } else {
+                            // Text only: merge — keep existing, add new ones
+                            let existingIDs = Set(swingProfile.recommendedDrills.map(\.drillID))
+                            let additions = newDrills.filter { !existingIDs.contains($0.drillID) }
+                            swingProfile.recommendedDrills.append(contentsOf: additions)
+                            debugLog("Merged drills: kept \(existingIDs.count), added \(additions.count)")
+                        }
                     }
                 }
                 if let strengths = json["strengths"] as? [String] {
