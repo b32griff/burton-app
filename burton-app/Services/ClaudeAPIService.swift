@@ -12,7 +12,8 @@ struct ClaudeAPIService {
 
     static func streamMessage(
         systemPrompt: String,
-        messages: [[String: Any]]
+        messages: [[String: Any]],
+        maxTokens: Int = 2048
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -22,7 +23,8 @@ struct ClaudeAPIService {
                     let request = try buildRequest(
                         systemPrompt: systemPrompt,
                         messages: messages,
-                        stream: true
+                        stream: true,
+                        maxTokens: maxTokens
                     )
 
                     // Fresh session per stream to avoid stale HTTP/2 connections

@@ -173,7 +173,8 @@ class ChatViewModel {
 
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
-                    messages: messages
+                    messages: messages,
+                    maxTokens: 4096
                 )
 
                 for try await chunk in stream {
