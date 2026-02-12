@@ -2,8 +2,7 @@ import UIKit
 import Foundation
 
 struct ClaudeAPIService {
-    // IMPORTANT: Replace with your deployed Vercel URL
-    static var backendURL = URL(string: "https://YOUR-APP.vercel.app/api/chat")!
+    static var backendURL = URL(string: "https://burton-app.vercel.app/api/chat")!
 
     private static var deviceId: String {
         UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
