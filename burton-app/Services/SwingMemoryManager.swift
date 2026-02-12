@@ -34,7 +34,7 @@ class SwingMemoryManager {
         return parts.joined(separator: "\n")
     }
 
-    func updateProfile(from conversation: Conversation, apiKey: String) async {
+    func updateProfile(from conversation: Conversation) async {
         guard conversation.messages.count >= 4 else { return }
 
         let conversationSummary = conversation.messages.map { msg in
@@ -74,7 +74,6 @@ class SwingMemoryManager {
 
         do {
             let response = try await ClaudeAPIService.sendSimpleMessage(
-                apiKey: apiKey,
                 systemPrompt: systemPrompt,
                 userMessage: userMessage
             )

@@ -10,10 +10,6 @@ class AppState {
         userProfile.hasCompletedOnboarding
     }
 
-    var hasAPIKey: Bool {
-        KeychainManager.hasAPIKey
-    }
-
     init() {
         self.userProfile = UserDefaultsManager.loadProfile() ?? .empty
         self.conversations = UserDefaultsManager.loadConversations()
@@ -66,7 +62,6 @@ class AppState {
 
     func resetOnboarding() {
         UserDefaultsManager.resetAll()
-        KeychainManager.deleteAPIKey()
         userProfile = .empty
         conversations = []
         swingProfile = .empty

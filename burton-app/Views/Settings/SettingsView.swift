@@ -13,30 +13,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            // MARK: - API Key
-            Section("API Key") {
-                if viewModel.hasAPIKey {
-                    HStack {
-                        Label("Connected", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Spacer()
-                        Button("Change") {
-                            viewModel.showAPIKeySetup = true
-                        }
-                    }
-
-                    Button("Remove API Key", role: .destructive) {
-                        viewModel.deleteAPIKey()
-                    }
-                } else {
-                    Button {
-                        viewModel.showAPIKeySetup = true
-                    } label: {
-                        Label("Add API Key", systemImage: "key.fill")
-                    }
-                }
-            }
-
             // MARK: - Profile
             Section("Profile") {
                 TextField("Name", text: $name)
@@ -126,12 +102,6 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .onAppear(perform: loadProfile)
-        .sheet(isPresented: $viewModel.showAPIKeySetup) {
-            APIKeySetupView()
-                .onDisappear {
-                    viewModel.refreshAPIKeyStatus()
-                }
-        }
         .alert("Clear Swing Memory?", isPresented: $viewModel.showClearMemoryConfirmation) {
             Button("Clear", role: .destructive) {
                 memoryManager.clearProfile()
@@ -148,7 +118,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will delete all data including conversations, swing profile, and API key. You'll need to complete onboarding again.")
+            Text("This will delete all data including conversations and swing profile. You'll need to complete onboarding again.")
         }
     }
 
@@ -157,6 +127,5 @@ struct SettingsView: View {
         handicapText = appState.userProfile.handicap.map { String($0) } ?? ""
         skillLevel = appState.userProfile.skillLevel
         goals = Set(appState.userProfile.goals)
-        viewModel.refreshAPIKeyStatus()
     }
 }

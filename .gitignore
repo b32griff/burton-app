@@ -22,6 +22,11 @@ Package.resolved
 # CocoaPods
 Pods/
 
+# Backend
+backend/.env
+backend/node_modules/
+.vercel/
+
 # OS files
 .DS_Store
 .DS_Store?

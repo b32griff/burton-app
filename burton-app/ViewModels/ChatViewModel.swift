@@ -26,10 +26,6 @@ class ChatViewModel {
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
-        guard let apiKey = KeychainManager.getAPIKey() else {
-            errorMessage = "No API key found. Please add your key in Settings."
-            return
-        }
 
         inputText = ""
         errorMessage = nil
@@ -51,7 +47,6 @@ class ChatViewModel {
                 let apiMessages = self.buildAPIMessages()
 
                 let stream = ClaudeAPIService.streamMessage(
-                    apiKey: apiKey,
                     systemPrompt: systemPrompt,
                     messages: apiMessages
                 )
@@ -67,13 +62,12 @@ class ChatViewModel {
                 await MainActor.run {
                     self.isStreaming = false
                     self.persistConversation()
-                    self.autoTitleIfNeeded(apiKey: apiKey)
-                    self.triggerProfileUpdateIfNeeded(apiKey: apiKey)
+                    self.autoTitleIfNeeded()
+                    self.triggerProfileUpdateIfNeeded()
                 }
             } catch {
                 await MainActor.run {
                     self.isStreaming = false
-                    // Remove empty assistant message on error
                     if let last = self.currentConversation.messages.last, last.content.isEmpty {
                         self.currentConversation.messages.removeLast()
                     }
@@ -87,11 +81,6 @@ class ChatViewModel {
     // MARK: - Video Analysis
 
     func sendVideoForAnalysis(url: URL) {
-        guard let apiKey = KeychainManager.getAPIKey() else {
-            errorMessage = "No API key found. Please add your key in Settings."
-            return
-        }
-
         errorMessage = nil
         isStreaming = true
 
@@ -124,7 +113,6 @@ class ChatViewModel {
                 let systemPrompt = self.buildSystemPrompt(videoMode: true)
 
                 let response = try await ClaudeAPIService.sendMessageWithImages(
-                    apiKey: apiKey,
                     systemPrompt: systemPrompt,
                     textContent: "Analyze this golf swing. The images are key frames extracted from a video, showing the swing sequence from setup to follow-through.",
                     imageDataArray: frames
@@ -135,7 +123,7 @@ class ChatViewModel {
                     self.currentConversation.messages[lastIndex].content = response
                     self.isStreaming = false
                     self.persistConversation()
-                    self.triggerProfileUpdateIfNeeded(apiKey: apiKey)
+                    self.triggerProfileUpdateIfNeeded()
                 }
             } catch {
                 await MainActor.run {
@@ -214,7 +202,7 @@ class ChatViewModel {
         }
     }
 
-    private func autoTitleIfNeeded(apiKey: String) {
+    private func autoTitleIfNeeded() {
         guard currentConversation.messages.count == 2,
               currentConversation.title == "New Conversation"
         else { return }
@@ -224,7 +212,6 @@ class ChatViewModel {
         Task {
             do {
                 let title = try await ClaudeAPIService.sendSimpleMessage(
-                    apiKey: apiKey,
                     systemPrompt: "Generate a short title (3-6 words) for this golf coaching conversation. Respond with ONLY the title, no quotes or punctuation.",
                     userMessage: firstUserMessage
                 )
@@ -239,26 +226,21 @@ class ChatViewModel {
         }
     }
 
-    private func triggerProfileUpdateIfNeeded(apiKey: String) {
+    private func triggerProfileUpdateIfNeeded() {
         guard currentConversation.messages.count >= 4,
               let memoryManager
         else { return }
 
-        // Also generate a conversation summary
         Task {
-            // Update swing profile
-            await memoryManager.updateProfile(from: currentConversation, apiKey: apiKey)
+            await memoryManager.updateProfile(from: currentConversation)
 
-            // Update the appState's copy
             await MainActor.run {
                 self.appState?.updateSwingProfile(memoryManager.swingProfile)
             }
 
-            // Generate conversation summary
             do {
                 let messagesText = currentConversation.messages.map { "\($0.role.rawValue): \($0.content.prefix(200))" }.joined(separator: "\n")
                 let summary = try await ClaudeAPIService.sendSimpleMessage(
-                    apiKey: apiKey,
                     systemPrompt: "Summarize this golf coaching conversation in 1-2 sentences. Respond with ONLY the summary.",
                     userMessage: messagesText
                 )

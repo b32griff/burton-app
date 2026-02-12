@@ -1,14 +1,17 @@
+import UIKit
 import Foundation
 
 struct ClaudeAPIService {
-    private static let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
-    private static let model = "claude-sonnet-4-20250514"
-    private static let maxTokens = 2048
+    // IMPORTANT: Replace with your deployed Vercel URL
+    static var backendURL = URL(string: "https://YOUR-APP.vercel.app/api/chat")!
+
+    private static var deviceId: String {
+        UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    }
 
     // MARK: - Streaming
 
     static func streamMessage(
-        apiKey: String,
         systemPrompt: String,
         messages: [[String: Any]]
     ) -> AsyncThrowingStream<String, Error> {
@@ -16,7 +19,6 @@ struct ClaudeAPIService {
             let task = Task {
                 do {
                     let request = try buildRequest(
-                        apiKey: apiKey,
                         systemPrompt: systemPrompt,
                         messages: messages,
                         stream: true
@@ -80,7 +82,6 @@ struct ClaudeAPIService {
     // MARK: - Vision (non-streaming)
 
     static func sendMessageWithImages(
-        apiKey: String,
         systemPrompt: String,
         textContent: String,
         imageDataArray: [Data]
@@ -109,7 +110,6 @@ struct ClaudeAPIService {
         ]
 
         let request = try buildRequest(
-            apiKey: apiKey,
             systemPrompt: systemPrompt,
             messages: messages,
             stream: false
@@ -140,7 +140,6 @@ struct ClaudeAPIService {
     // MARK: - Simple non-streaming request (for internal tasks like titling/profiling)
 
     static func sendSimpleMessage(
-        apiKey: String,
         systemPrompt: String,
         userMessage: String
     ) async throws -> String {
@@ -149,7 +148,6 @@ struct ClaudeAPIService {
         ]
 
         let request = try buildRequest(
-            apiKey: apiKey,
             systemPrompt: systemPrompt,
             messages: messages,
             stream: false
@@ -177,54 +175,25 @@ struct ClaudeAPIService {
         return text
     }
 
-    // MARK: - Validate API Key
-
-    static func validateAPIKey(_ key: String) async -> Bool {
-        do {
-            let messages: [[String: Any]] = [
-                ["role": "user", "content": "Hi"]
-            ]
-            let request = try buildRequest(
-                apiKey: key,
-                systemPrompt: "Respond with OK",
-                messages: messages,
-                stream: false,
-                maxTokens: 10
-            )
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else { return false }
-            return httpResponse.statusCode == 200
-        } catch {
-            return false
-        }
-    }
-
     // MARK: - Private
 
     private static func buildRequest(
-        apiKey: String,
         systemPrompt: String,
         messages: [[String: Any]],
         stream: Bool,
-        maxTokens: Int = maxTokens
+        maxTokens: Int = 2048
     ) throws -> URLRequest {
-        var request = URLRequest(url: apiURL)
+        var request = URLRequest(url: backendURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
 
-        var body: [String: Any] = [
-            "model": model,
-            "max_tokens": maxTokens,
+        let body: [String: Any] = [
             "system": systemPrompt,
             "messages": messages,
-            "stream": stream
+            "stream": stream,
+            "max_tokens": maxTokens
         ]
-
-        if stream {
-            body["stream"] = true
-        }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
@@ -239,14 +208,14 @@ struct ClaudeAPIService {
         var errorDescription: String? {
             switch self {
             case .invalidResponse:
-                return "Invalid response from server"
+                return "Unable to connect. Please check your internet connection."
             case .httpError(let code, let body):
-                if code == 401 {
-                    return "Invalid API key. Please check your key in Settings."
+                if code == 429 {
+                    return "You've reached the message limit. Please try again later."
                 }
                 return "Server error (\(code)): \(body)"
             case .apiError(let message):
-                return "API error: \(message)"
+                return "AI error: \(message)"
             case .parseError:
                 return "Failed to parse response"
             }
