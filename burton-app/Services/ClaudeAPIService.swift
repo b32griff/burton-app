@@ -8,14 +8,6 @@ struct ClaudeAPIService {
         UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
     }
 
-    // Dedicated session with longer timeouts for streaming
-    private static let streamingSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 300
-        return URLSession(configuration: config)
-    }()
-
     // MARK: - Streaming
 
     static func streamMessage(
@@ -33,7 +25,13 @@ struct ClaudeAPIService {
                         stream: true
                     )
 
-                    let (bytes, response) = try await streamingSession.bytes(for: request)
+                    // Fresh session per stream to avoid stale HTTP/2 connections
+                    let config = URLSessionConfiguration.default
+                    config.timeoutIntervalForRequest = 120
+                    config.timeoutIntervalForResource = 300
+                    let session = URLSession(configuration: config)
+
+                    let (bytes, response) = try await session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw APIError.invalidResponse

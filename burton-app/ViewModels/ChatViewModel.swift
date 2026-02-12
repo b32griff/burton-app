@@ -58,12 +58,7 @@ class ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
 
-            defer {
-                Task { @MainActor in
-                    self.isStreaming = false
-                    self.persistConversation()
-                }
-            }
+            var failed = false
 
             do {
                 let systemPrompt = self.buildSystemPrompt()
@@ -81,17 +76,23 @@ class ChatViewModel {
                         self.currentConversation.messages[lastIndex].content += chunk
                     }
                 }
-
-                await MainActor.run {
-                    self.autoTitleIfNeeded()
-                    self.triggerProfileUpdateIfNeeded()
-                }
             } catch {
+                failed = true
                 await MainActor.run {
                     if let last = self.currentConversation.messages.last, last.content.isEmpty {
                         self.currentConversation.messages.removeLast()
                     }
                     self.errorMessage = error.localizedDescription
+                }
+            }
+
+            // Always runs — guaranteed to reset isStreaming
+            await MainActor.run {
+                self.isStreaming = false
+                self.persistConversation()
+                if !failed {
+                    self.autoTitleIfNeeded()
+                    self.triggerProfileUpdateIfNeeded()
                 }
             }
         }
@@ -132,13 +133,7 @@ class ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
 
-            defer {
-                Task { @MainActor in
-                    self.isStreaming = false
-                    self.persistConversation()
-                }
-                try? FileManager.default.removeItem(at: url)
-            }
+            var failed = false
 
             do {
                 let frames = try await VideoFrameExtractor.extractKeyFrames(from: url)
@@ -148,7 +143,9 @@ class ChatViewModel {
                         self.currentConversation.messages.removeLast()
                         self.errorMessage = "Could not extract frames from video."
                     }
-                    return
+                    failed = true
+                    // Fall through to cleanup below
+                    throw ClaudeAPIService.APIError.parseError
                 }
 
                 // Build image content blocks for the API message
@@ -174,7 +171,6 @@ class ChatViewModel {
                     ["role": "user", "content": contentBlocks]
                 ]
 
-                // Use streaming to avoid Vercel Edge timeout
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
                     messages: messages
@@ -187,18 +183,27 @@ class ChatViewModel {
                         self.currentConversation.messages[lastIndex].content += chunk
                     }
                 }
-
-                await MainActor.run {
-                    self.triggerProfileUpdateIfNeeded()
-                }
             } catch {
-                await MainActor.run {
-                    if let last = self.currentConversation.messages.last, last.content.isEmpty {
-                        self.currentConversation.messages.removeLast()
+                if !failed {
+                    failed = true
+                    await MainActor.run {
+                        if let last = self.currentConversation.messages.last, last.content.isEmpty {
+                            self.currentConversation.messages.removeLast()
+                        }
+                        self.errorMessage = error.localizedDescription
                     }
-                    self.errorMessage = error.localizedDescription
                 }
             }
+
+            // Always runs — guaranteed to reset isStreaming and clean up
+            await MainActor.run {
+                self.isStreaming = false
+                self.persistConversation()
+                if !failed {
+                    self.triggerProfileUpdateIfNeeded()
+                }
+            }
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
