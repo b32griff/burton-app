@@ -49,8 +49,12 @@ class SwingMemoryManager {
             currentProfileJSON = "{}"
         }
 
+        let issueNames = SwingIssueData.all.map(\.name)
+
         let systemPrompt = """
         You are a golf coaching data analyst. Given a conversation between a golf coach and student, update the student's swing profile JSON. Merge new information with existing data — don't remove things unless explicitly corrected. Add a progress note summarizing this session.
+
+        IMPORTANT: For "identifiedIssues", you MUST use values from this exact list when applicable: \(issueNames.joined(separator: ", ")). Only add custom issue names if the issue doesn't fit any of these categories. For "currentFocusAreas", also prefer these exact names when relevant.
 
         Respond with ONLY valid JSON matching this structure (no markdown, no explanation):
         {

@@ -141,17 +141,44 @@ class ChatViewModel {
                     return
                 }
 
-                let systemPrompt = self.buildSystemPrompt(videoMode: true)
+                // Build image content blocks for the API message
+                var contentBlocks: [[String: Any]] = []
+                for frameData in frames {
+                    let base64 = frameData.base64EncodedString()
+                    contentBlocks.append([
+                        "type": "image",
+                        "source": [
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": base64
+                        ]
+                    ])
+                }
+                contentBlocks.append([
+                    "type": "text",
+                    "text": "\(text)\n\nThe images are key frames extracted from a video, showing the swing sequence from setup to follow-through."
+                ])
 
-                let response = try await ClaudeAPIService.sendMessageWithImages(
+                let systemPrompt = self.buildSystemPrompt(videoMode: true)
+                let messages: [[String: Any]] = [
+                    ["role": "user", "content": contentBlocks]
+                ]
+
+                // Use streaming to avoid Vercel Edge timeout
+                let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
-                    textContent: "\(text)\n\nThe images are key frames extracted from a video, showing the swing sequence from setup to follow-through.",
-                    imageDataArray: frames
+                    messages: messages
                 )
 
+                for try await chunk in stream {
+                    if Task.isCancelled { break }
+                    await MainActor.run {
+                        let lastIndex = self.currentConversation.messages.count - 1
+                        self.currentConversation.messages[lastIndex].content += chunk
+                    }
+                }
+
                 await MainActor.run {
-                    let lastIndex = self.currentConversation.messages.count - 1
-                    self.currentConversation.messages[lastIndex].content = response
                     self.isStreaming = false
                     self.persistConversation()
                     self.triggerProfileUpdateIfNeeded()

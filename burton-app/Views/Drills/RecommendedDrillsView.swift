@@ -71,14 +71,18 @@ struct RecommendedDrillsView: View {
 
         guard !issues.isEmpty || !focusAreas.isEmpty else { return [] }
 
-        // Find swing issues that match the user's identified issues
+        let allTerms = issues + focusAreas
+
+        // Find swing issues that match the user's identified issues or focus areas
         let matchingIssues = SwingIssueData.all.filter { issue in
-            issues.contains { identified in
-                issue.name.localizedCaseInsensitiveContains(identified)
-                || identified.localizedCaseInsensitiveContains(issue.name)
-            } || focusAreas.contains { focus in
-                issue.name.localizedCaseInsensitiveContains(focus)
-                || focus.localizedCaseInsensitiveContains(issue.name)
+            let issueName = issue.name.lowercased()
+            return allTerms.contains { term in
+                let t = term.lowercased()
+                // Exact match, containment, or keyword overlap
+                return issueName == t
+                    || issueName.contains(t)
+                    || t.contains(issueName)
+                    || issueKeywordsOverlap(issueName, t)
             }
         }
 
@@ -88,6 +92,14 @@ struct RecommendedDrillsView: View {
         // Return matching drills
         let drills = DrillData.all.filter { drillIDs.contains($0.id) }
         return Array(drills.prefix(8))
+    }
+
+    /// Check if significant words overlap (e.g. "fat shots" matches "hitting fat")
+    private func issueKeywordsOverlap(_ a: String, _ b: String) -> Bool {
+        let stopWords: Set<String> = ["the", "a", "an", "my", "i", "and", "or", "of", "to", "is", "in", "it"]
+        let wordsA = Set(a.split(separator: " ").map(String.init)).subtracting(stopWords)
+        let wordsB = Set(b.split(separator: " ").map(String.init)).subtracting(stopWords)
+        return !wordsA.intersection(wordsB).isEmpty
     }
 
     private var remainingDrills: [Drill] {
