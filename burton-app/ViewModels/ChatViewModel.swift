@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 @Observable
 class ChatViewModel {
@@ -84,10 +85,13 @@ class ChatViewModel {
         errorMessage = nil
         isStreaming = true
 
+        // Generate thumbnail and save to disk
+        let thumbnailPath = saveThumbnail(from: url)
+
         let userMessage = ChatMessage(
             role: .user,
             content: "Please analyze my golf swing from this video.",
-            imageReferences: ["video_frame"]
+            imageReferences: thumbnailPath.map { [$0] } ?? []
         )
         currentConversation.messages.append(userMessage)
         currentConversation.updatedAt = Date()
@@ -223,6 +227,32 @@ class ChatViewModel {
             } catch {
                 // Title generation is best-effort
             }
+        }
+    }
+
+    private func saveThumbnail(from videoURL: URL) -> String? {
+        let asset = AVURLAsset(url: videoURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 600, height: 600)
+
+        guard let cgImage = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+
+        let uiImage = UIImage(cgImage: cgImage)
+        guard let jpegData = uiImage.jpegData(compressionQuality: 0.8) else { return nil }
+
+        let thumbnailDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("thumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: thumbnailDir, withIntermediateDirectories: true)
+
+        let fileName = "\(UUID().uuidString).jpg"
+        let fileURL = thumbnailDir.appendingPathComponent(fileName)
+
+        do {
+            try jpegData.write(to: fileURL)
+            return fileURL.path
+        } catch {
+            return nil
         }
     }
 

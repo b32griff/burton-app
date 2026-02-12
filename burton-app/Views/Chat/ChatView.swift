@@ -1,10 +1,15 @@
 import SwiftUI
 
+enum ChatSheet: Identifiable {
+    case videoPicker, settings
+    var id: Self { self }
+}
+
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SwingMemoryManager.self) private var memoryManager
     @State private var viewModel = ChatViewModel()
-    @State private var showSettings = false
+    @State private var activeSheet: ChatSheet?
 
     var initialConversation: Conversation?
 
@@ -29,7 +34,7 @@ struct ChatView: View {
                 isStreaming: viewModel.isStreaming,
                 onSend: { viewModel.sendMessage() },
                 onStop: { viewModel.stopStreaming() },
-                onVideoTap: { viewModel.showVideoPicker = true }
+                onVideoTap: { activeSheet = .videoPicker }
             )
         }
         .navigationTitle(viewModel.currentConversation.title)
@@ -37,7 +42,7 @@ struct ChatView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    showSettings = true
+                    activeSheet = .settings
                 } label: {
                     Image(systemName: "gearshape")
                 }
@@ -51,13 +56,15 @@ struct ChatView: View {
                 }
             }
         }
-        .sheet(isPresented: $viewModel.showVideoPicker) {
-            VideoPicker { url in
-                viewModel.sendVideoForAnalysis(url: url)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .videoPicker:
+                VideoPicker { url in
+                    viewModel.sendVideoForAnalysis(url: url)
+                }
+            case .settings:
+                SettingsSheet()
             }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsSheet()
         }
         .onAppear {
             viewModel.configure(appState: appState, memoryManager: memoryManager)

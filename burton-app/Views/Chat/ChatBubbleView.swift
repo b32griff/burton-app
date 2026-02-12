@@ -9,23 +9,31 @@ struct ChatBubbleView: View {
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 if !message.imageReferences.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(message.imageReferences, id: \.self) { _ in
-                            Image(systemName: "film")
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 44, height: 44)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    ForEach(message.imageReferences, id: \.self) { path in
+                        if let uiImage = UIImage(contentsOfFile: path) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(maxWidth: 220, maxHeight: 280)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .overlay(
+                                    Image(systemName: "play.circle.fill")
+                                        .font(.system(size: 36))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                        .shadow(radius: 4)
+                                )
                         }
                     }
                 }
 
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(bubbleBackground, in: bubbleShape)
-                    .foregroundStyle(message.role == .user ? .white : .primary)
+                if !message.content.isEmpty {
+                    Text(message.content)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(bubbleBackground, in: bubbleShape)
+                        .foregroundStyle(message.role == .user ? .white : .primary)
+                }
 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
