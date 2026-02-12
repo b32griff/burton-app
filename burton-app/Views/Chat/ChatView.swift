@@ -138,19 +138,13 @@ struct ChatView: View {
                 }
                 .padding(.vertical, 12)
             }
-            .onChange(of: viewModel.currentConversation.messages.last?.content) {
-                scrollToBottom(proxy: proxy)
-            }
             .onChange(of: viewModel.currentConversation.messages.count) {
-                scrollToBottom(proxy: proxy)
-            }
-        }
-    }
-
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastMessage = viewModel.currentConversation.messages.last {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                // Only scroll when a new message is added (user sends), not during streaming
+                if let lastMessage = viewModel.currentConversation.messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
             }
         }
     }
