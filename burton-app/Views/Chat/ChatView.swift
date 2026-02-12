@@ -4,6 +4,7 @@ struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SwingMemoryManager.self) private var memoryManager
     @State private var viewModel = ChatViewModel()
+    @State private var showSettings = false
 
     var initialConversation: Conversation?
 
@@ -34,6 +35,14 @@ struct ChatView: View {
         .navigationTitle(viewModel.currentConversation.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     viewModel.startNewConversation()
@@ -46,6 +55,9 @@ struct ChatView: View {
             VideoPicker { url in
                 viewModel.sendVideoForAnalysis(url: url)
             }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsSheet()
         }
         .onAppear {
             viewModel.configure(appState: appState, memoryManager: memoryManager)
@@ -67,15 +79,15 @@ struct ChatView: View {
                 Text("Your AI Swing Coach")
                     .font(.title2.bold())
 
-                Text("Ask me anything about your golf game — swing mechanics, drills, course strategy, or the mental game. You can also share a video of your swing for analysis.")
+                Text("Describe your swing issues or upload a video and I'll help you fix them.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    suggestionButton("What drills can help my slice?")
-                    suggestionButton("How do I improve my lag putting?")
+                    suggestionButton("I keep slicing my driver")
+                    suggestionButton("What drills can help my short game?")
                     suggestionButton("I keep hitting fat shots — help!")
                     suggestionButton("Create a 30-minute practice plan")
                 }
@@ -130,6 +142,103 @@ struct ChatView: View {
         if let lastMessage = viewModel.currentConversation.messages.last {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
+            }
+        }
+    }
+}
+
+// MARK: - Settings Sheet
+
+struct SettingsSheet: View {
+    @Environment(AppState.self) private var appState
+    @Environment(SwingMemoryManager.self) private var memoryManager
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var handicapText = ""
+    @State private var skillLevel: SkillLevel = .beginner
+    @State private var showResetConfirmation = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Profile") {
+                    TextField("Name", text: $name)
+
+                    HStack {
+                        Text("Handicap")
+                        Spacer()
+                        TextField("Optional", text: $handicapText)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+
+                    Picker("Skill Level", selection: $skillLevel) {
+                        ForEach(SkillLevel.allCases) { level in
+                            Text(level.rawValue).tag(level)
+                        }
+                    }
+                }
+
+                Section("Swing Memory") {
+                    if memoryManager.swingProfile.isEmpty {
+                        Text("Chat with your coach to build your swing profile.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if !memoryManager.swingProfile.summary.isEmpty {
+                            Text(memoryManager.swingProfile.summary)
+                                .font(.subheadline)
+                        }
+
+                        Text("\(memoryManager.swingProfile.identifiedIssues.count) issues, \(memoryManager.swingProfile.strengths.count) strengths tracked")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Button("Reset Everything", role: .destructive) {
+                        showResetConfirmation = true
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        let handicap = Double(handicapText)
+                        appState.updateProfile(
+                            name: name,
+                            handicap: handicap,
+                            skillLevel: skillLevel,
+                            goals: appState.userProfile.goals
+                        )
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .alert("Reset Everything?", isPresented: $showResetConfirmation) {
+                Button("Reset", role: .destructive) {
+                    memoryManager.clearProfile()
+                    appState.resetOnboarding()
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete all data including conversations and swing profile.")
+            }
+            .onAppear {
+                name = appState.userProfile.name
+                handicapText = appState.userProfile.handicap.map { String($0) } ?? ""
+                skillLevel = appState.userProfile.skillLevel
             }
         }
     }

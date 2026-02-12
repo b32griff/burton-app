@@ -3,21 +3,15 @@ import SwiftUI
 struct MainTabView: View {
     var body: some View {
         TabView {
-            Tab("Chat", systemImage: "bubble.left.and.text.bubble.right.fill") {
+            Tab("Coach", systemImage: "bubble.left.and.text.bubble.right.fill") {
                 NavigationStack {
                     ChatView()
                 }
             }
 
-            Tab("History", systemImage: "clock.fill") {
+            Tab("Drills", systemImage: "list.bullet.clipboard") {
                 NavigationStack {
-                    HistoryView()
-                }
-            }
-
-            Tab("Settings", systemImage: "gearshape.fill") {
-                NavigationStack {
-                    SettingsView()
+                    RecommendedDrillsView()
                 }
             }
         }
