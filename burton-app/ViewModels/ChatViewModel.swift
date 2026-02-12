@@ -58,6 +58,13 @@ class ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
 
+            defer {
+                Task { @MainActor in
+                    self.isStreaming = false
+                    self.persistConversation()
+                }
+            }
+
             do {
                 let systemPrompt = self.buildSystemPrompt()
                 let apiMessages = self.buildAPIMessages()
@@ -76,19 +83,15 @@ class ChatViewModel {
                 }
 
                 await MainActor.run {
-                    self.isStreaming = false
-                    self.persistConversation()
                     self.autoTitleIfNeeded()
                     self.triggerProfileUpdateIfNeeded()
                 }
             } catch {
                 await MainActor.run {
-                    self.isStreaming = false
                     if let last = self.currentConversation.messages.last, last.content.isEmpty {
                         self.currentConversation.messages.removeLast()
                     }
                     self.errorMessage = error.localizedDescription
-                    self.persistConversation()
                 }
             }
         }
@@ -129,12 +132,19 @@ class ChatViewModel {
         streamTask = Task { [weak self] in
             guard let self else { return }
 
+            defer {
+                Task { @MainActor in
+                    self.isStreaming = false
+                    self.persistConversation()
+                }
+                try? FileManager.default.removeItem(at: url)
+            }
+
             do {
                 let frames = try await VideoFrameExtractor.extractKeyFrames(from: url)
 
                 guard !frames.isEmpty else {
                     await MainActor.run {
-                        self.isStreaming = false
                         self.currentConversation.messages.removeLast()
                         self.errorMessage = "Could not extract frames from video."
                     }
@@ -179,22 +189,16 @@ class ChatViewModel {
                 }
 
                 await MainActor.run {
-                    self.isStreaming = false
-                    self.persistConversation()
                     self.triggerProfileUpdateIfNeeded()
                 }
             } catch {
                 await MainActor.run {
-                    self.isStreaming = false
                     if let last = self.currentConversation.messages.last, last.content.isEmpty {
                         self.currentConversation.messages.removeLast()
                     }
                     self.errorMessage = error.localizedDescription
                 }
             }
-
-            // Clean up temp file
-            try? FileManager.default.removeItem(at: url)
         }
     }
 
