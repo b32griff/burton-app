@@ -9,6 +9,10 @@ class ChatViewModel {
     var showVideoPicker = false
     var errorMessage: String?
 
+    // Staged video attachment (shown in input bar before sending)
+    var stagedVideoURL: URL?
+    var stagedThumbnailPath: String?
+
     private var streamTask: Task<Void, Never>?
     private var appState: AppState?
     private var memoryManager: SwingMemoryManager?
@@ -26,12 +30,23 @@ class ChatViewModel {
 
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isStreaming else { return }
+        let hasVideo = stagedVideoURL != nil
+        guard (!text.isEmpty || hasVideo), !isStreaming else { return }
 
+        let messageText = text.isEmpty ? "Analyze my golf swing from this video." : text
         inputText = ""
         errorMessage = nil
 
-        let userMessage = ChatMessage(role: .user, content: text)
+        // If there's a staged video, send as video analysis
+        if let videoURL = stagedVideoURL {
+            let thumbnailPath = stagedThumbnailPath
+            stagedVideoURL = nil
+            stagedThumbnailPath = nil
+            sendVideoWithMessage(url: videoURL, text: messageText, thumbnailPath: thumbnailPath)
+            return
+        }
+
+        let userMessage = ChatMessage(role: .user, content: messageText)
         currentConversation.messages.append(userMessage)
         currentConversation.updatedAt = Date()
 
@@ -79,18 +94,30 @@ class ChatViewModel {
         }
     }
 
-    // MARK: - Video Analysis
+    // MARK: - Video Staging
 
-    func sendVideoForAnalysis(url: URL) {
+    func stageVideo(url: URL) {
+        stagedVideoURL = url
+        stagedThumbnailPath = saveThumbnail(from: url)
+    }
+
+    func clearStagedVideo() {
+        if let url = stagedVideoURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        stagedVideoURL = nil
+        stagedThumbnailPath = nil
+    }
+
+    // MARK: - Video Analysis (internal)
+
+    private func sendVideoWithMessage(url: URL, text: String, thumbnailPath: String?) {
         errorMessage = nil
         isStreaming = true
 
-        // Generate thumbnail and save to disk
-        let thumbnailPath = saveThumbnail(from: url)
-
         let userMessage = ChatMessage(
             role: .user,
-            content: "Please analyze my golf swing from this video.",
+            content: text,
             imageReferences: thumbnailPath.map { [$0] } ?? []
         )
         currentConversation.messages.append(userMessage)
@@ -118,7 +145,7 @@ class ChatViewModel {
 
                 let response = try await ClaudeAPIService.sendMessageWithImages(
                     systemPrompt: systemPrompt,
-                    textContent: "Analyze this golf swing. The images are key frames extracted from a video, showing the swing sequence from setup to follow-through.",
+                    textContent: "\(text)\n\nThe images are key frames extracted from a video, showing the swing sequence from setup to follow-through.",
                     imageDataArray: frames
                 )
 
@@ -157,6 +184,7 @@ class ChatViewModel {
 
     func startNewConversation() {
         persistConversation()
+        clearStagedVideo()
         currentConversation = Conversation()
         inputText = ""
         errorMessage = nil

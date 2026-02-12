@@ -32,9 +32,11 @@ struct ChatView: View {
             ChatInputBar(
                 text: $viewModel.inputText,
                 isStreaming: viewModel.isStreaming,
+                stagedThumbnailPath: viewModel.stagedThumbnailPath,
                 onSend: { viewModel.sendMessage() },
                 onStop: { viewModel.stopStreaming() },
-                onVideoTap: { activeSheet = .videoPicker }
+                onVideoTap: { activeSheet = .videoPicker },
+                onClearVideo: { viewModel.clearStagedVideo() }
             )
         }
         .navigationTitle(viewModel.currentConversation.title)
@@ -60,7 +62,7 @@ struct ChatView: View {
             switch sheet {
             case .videoPicker:
                 VideoPicker { url in
-                    viewModel.sendVideoForAnalysis(url: url)
+                    viewModel.stageVideo(url: url)
                 }
             case .settings:
                 SettingsSheet()
