@@ -3,15 +3,21 @@ import SwiftUI
 @Observable
 class AppState {
     var userProfile: UserProfile
-    var practiceLog: [PracticeLogEntry]
+    var conversations: [Conversation]
+    var swingProfile: SwingProfile
 
     var hasCompletedOnboarding: Bool {
         userProfile.hasCompletedOnboarding
     }
 
+    var hasAPIKey: Bool {
+        KeychainManager.hasAPIKey
+    }
+
     init() {
         self.userProfile = UserDefaultsManager.loadProfile() ?? .empty
-        self.practiceLog = UserDefaultsManager.loadPracticeLog()
+        self.conversations = UserDefaultsManager.loadConversations()
+        self.swingProfile = UserDefaultsManager.loadSwingProfile()
     }
 
     func completeOnboarding(name: String, skillLevel: SkillLevel, goals: [ImprovementGoal]) {
@@ -30,23 +36,47 @@ class AppState {
         saveProfile()
     }
 
-    func addPracticeEntry(_ entry: PracticeLogEntry) {
-        practiceLog.insert(entry, at: 0)
-        UserDefaultsManager.savePracticeLog(practiceLog)
+    // MARK: - Conversations
+
+    func addConversation(_ conversation: Conversation) {
+        conversations.insert(conversation, at: 0)
+        saveConversations()
     }
 
-    func deletePracticeEntry(id: UUID) {
-        practiceLog.removeAll { $0.id == id }
-        UserDefaultsManager.savePracticeLog(practiceLog)
+    func updateConversation(_ conversation: Conversation) {
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[index] = conversation
+        }
+        saveConversations()
     }
+
+    func deleteConversation(id: UUID) {
+        conversations.removeAll { $0.id == id }
+        saveConversations()
+    }
+
+    // MARK: - Swing Profile
+
+    func updateSwingProfile(_ profile: SwingProfile) {
+        swingProfile = profile
+        UserDefaultsManager.saveSwingProfile(profile)
+    }
+
+    // MARK: - Reset
 
     func resetOnboarding() {
         UserDefaultsManager.resetAll()
+        KeychainManager.deleteAPIKey()
         userProfile = .empty
-        practiceLog = []
+        conversations = []
+        swingProfile = .empty
     }
 
     private func saveProfile() {
         UserDefaultsManager.saveProfile(userProfile)
+    }
+
+    private func saveConversations() {
+        UserDefaultsManager.saveConversations(conversations)
     }
 }

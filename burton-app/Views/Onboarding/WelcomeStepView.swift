@@ -16,7 +16,7 @@ struct WelcomeStepView: View {
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
 
-            Text("Your personal AI-powered golf improvement companion. Get expert tips, practice drills, and track your progress.")
+            Text("Your personal AI swing coach. Chat about your game, get tailored advice, and track your improvement over time.")
                 .font(.body)
                 .foregroundStyle(.white.opacity(0.9))
                 .multilineTextAlignment(.center)

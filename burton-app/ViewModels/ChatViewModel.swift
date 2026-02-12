@@ -1,0 +1,275 @@
+import SwiftUI
+
+@Observable
+class ChatViewModel {
+    var currentConversation: Conversation
+    var inputText = ""
+    var isStreaming = false
+    var showVideoPicker = false
+    var errorMessage: String?
+
+    private var streamTask: Task<Void, Never>?
+    private var appState: AppState?
+    private var memoryManager: SwingMemoryManager?
+
+    init(conversation: Conversation? = nil) {
+        self.currentConversation = conversation ?? Conversation()
+    }
+
+    func configure(appState: AppState, memoryManager: SwingMemoryManager) {
+        self.appState = appState
+        self.memoryManager = memoryManager
+    }
+
+    // MARK: - Send Message
+
+    func sendMessage() {
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isStreaming else { return }
+        guard let apiKey = KeychainManager.getAPIKey() else {
+            errorMessage = "No API key found. Please add your key in Settings."
+            return
+        }
+
+        inputText = ""
+        errorMessage = nil
+
+        let userMessage = ChatMessage(role: .user, content: text)
+        currentConversation.messages.append(userMessage)
+        currentConversation.updatedAt = Date()
+
+        let assistantMessage = ChatMessage(role: .assistant, content: "")
+        currentConversation.messages.append(assistantMessage)
+
+        isStreaming = true
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let systemPrompt = self.buildSystemPrompt()
+                let apiMessages = self.buildAPIMessages()
+
+                let stream = ClaudeAPIService.streamMessage(
+                    apiKey: apiKey,
+                    systemPrompt: systemPrompt,
+                    messages: apiMessages
+                )
+
+                for try await chunk in stream {
+                    if Task.isCancelled { break }
+                    await MainActor.run {
+                        let lastIndex = self.currentConversation.messages.count - 1
+                        self.currentConversation.messages[lastIndex].content += chunk
+                    }
+                }
+
+                await MainActor.run {
+                    self.isStreaming = false
+                    self.persistConversation()
+                    self.autoTitleIfNeeded(apiKey: apiKey)
+                    self.triggerProfileUpdateIfNeeded(apiKey: apiKey)
+                }
+            } catch {
+                await MainActor.run {
+                    self.isStreaming = false
+                    // Remove empty assistant message on error
+                    if let last = self.currentConversation.messages.last, last.content.isEmpty {
+                        self.currentConversation.messages.removeLast()
+                    }
+                    self.errorMessage = error.localizedDescription
+                    self.persistConversation()
+                }
+            }
+        }
+    }
+
+    // MARK: - Video Analysis
+
+    func sendVideoForAnalysis(url: URL) {
+        guard let apiKey = KeychainManager.getAPIKey() else {
+            errorMessage = "No API key found. Please add your key in Settings."
+            return
+        }
+
+        errorMessage = nil
+        isStreaming = true
+
+        let userMessage = ChatMessage(
+            role: .user,
+            content: "Please analyze my golf swing from this video.",
+            imageReferences: ["video_frame"]
+        )
+        currentConversation.messages.append(userMessage)
+        currentConversation.updatedAt = Date()
+
+        let assistantMessage = ChatMessage(role: .assistant, content: "")
+        currentConversation.messages.append(assistantMessage)
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let frames = try await VideoFrameExtractor.extractKeyFrames(from: url)
+
+                guard !frames.isEmpty else {
+                    await MainActor.run {
+                        self.isStreaming = false
+                        self.currentConversation.messages.removeLast()
+                        self.errorMessage = "Could not extract frames from video."
+                    }
+                    return
+                }
+
+                let systemPrompt = self.buildSystemPrompt(videoMode: true)
+
+                let response = try await ClaudeAPIService.sendMessageWithImages(
+                    apiKey: apiKey,
+                    systemPrompt: systemPrompt,
+                    textContent: "Analyze this golf swing. The images are key frames extracted from a video, showing the swing sequence from setup to follow-through.",
+                    imageDataArray: frames
+                )
+
+                await MainActor.run {
+                    let lastIndex = self.currentConversation.messages.count - 1
+                    self.currentConversation.messages[lastIndex].content = response
+                    self.isStreaming = false
+                    self.persistConversation()
+                    self.triggerProfileUpdateIfNeeded(apiKey: apiKey)
+                }
+            } catch {
+                await MainActor.run {
+                    self.isStreaming = false
+                    if let last = self.currentConversation.messages.last, last.content.isEmpty {
+                        self.currentConversation.messages.removeLast()
+                    }
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+
+            // Clean up temp file
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    // MARK: - Stop Streaming
+
+    func stopStreaming() {
+        streamTask?.cancel()
+        streamTask = nil
+        isStreaming = false
+        persistConversation()
+    }
+
+    // MARK: - New Conversation
+
+    func startNewConversation() {
+        persistConversation()
+        currentConversation = Conversation()
+        inputText = ""
+        errorMessage = nil
+    }
+
+    func loadConversation(_ conversation: Conversation) {
+        persistConversation()
+        currentConversation = conversation
+        inputText = ""
+        errorMessage = nil
+    }
+
+    // MARK: - Private
+
+    private func buildSystemPrompt(videoMode: Bool = false) -> String {
+        guard let appState else { return "" }
+
+        let recentSummaries = appState.conversations
+            .prefix(3)
+            .compactMap(\.summary)
+
+        return SystemPromptBuilder.build(
+            userProfile: appState.userProfile,
+            swingProfile: memoryManager?.swingProfile ?? .empty,
+            recentConversationSummaries: recentSummaries,
+            videoAnalysisMode: videoMode
+        )
+    }
+
+    private func buildAPIMessages() -> [[String: Any]] {
+        currentConversation.messages.dropLast().compactMap { msg -> [String: Any]? in
+            guard !msg.content.isEmpty else { return nil }
+            return [
+                "role": msg.role.rawValue,
+                "content": msg.content
+            ]
+        }
+    }
+
+    private func persistConversation() {
+        guard let appState, !currentConversation.messages.isEmpty else { return }
+
+        if appState.conversations.contains(where: { $0.id == currentConversation.id }) {
+            appState.updateConversation(currentConversation)
+        } else {
+            appState.addConversation(currentConversation)
+        }
+    }
+
+    private func autoTitleIfNeeded(apiKey: String) {
+        guard currentConversation.messages.count == 2,
+              currentConversation.title == "New Conversation"
+        else { return }
+
+        let firstUserMessage = currentConversation.messages.first?.content ?? ""
+
+        Task {
+            do {
+                let title = try await ClaudeAPIService.sendSimpleMessage(
+                    apiKey: apiKey,
+                    systemPrompt: "Generate a short title (3-6 words) for this golf coaching conversation. Respond with ONLY the title, no quotes or punctuation.",
+                    userMessage: firstUserMessage
+                )
+
+                await MainActor.run {
+                    self.currentConversation.title = String(title.prefix(50)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.persistConversation()
+                }
+            } catch {
+                // Title generation is best-effort
+            }
+        }
+    }
+
+    private func triggerProfileUpdateIfNeeded(apiKey: String) {
+        guard currentConversation.messages.count >= 4,
+              let memoryManager
+        else { return }
+
+        // Also generate a conversation summary
+        Task {
+            // Update swing profile
+            await memoryManager.updateProfile(from: currentConversation, apiKey: apiKey)
+
+            // Update the appState's copy
+            await MainActor.run {
+                self.appState?.updateSwingProfile(memoryManager.swingProfile)
+            }
+
+            // Generate conversation summary
+            do {
+                let messagesText = currentConversation.messages.map { "\($0.role.rawValue): \($0.content.prefix(200))" }.joined(separator: "\n")
+                let summary = try await ClaudeAPIService.sendSimpleMessage(
+                    apiKey: apiKey,
+                    systemPrompt: "Summarize this golf coaching conversation in 1-2 sentences. Respond with ONLY the summary.",
+                    userMessage: messagesText
+                )
+
+                await MainActor.run {
+                    self.currentConversation.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.persistConversation()
+                }
+            } catch {
+                // Summary generation is best-effort
+            }
+        }
+    }
+}

@@ -21,19 +21,19 @@ struct OnboardingContainerView: View {
                 .padding(.bottom, 20)
 
                 // Step content
-                TabView(selection: $viewModel.currentStep) {
-                    WelcomeStepView(viewModel: viewModel)
-                        .tag(0)
-
-                    SkillLevelStepView(viewModel: viewModel)
-                        .tag(1)
-
-                    GoalsStepView(viewModel: viewModel) {
-                        viewModel.completeOnboarding(appState: appState)
+                Group {
+                    switch viewModel.currentStep {
+                    case 0:
+                        WelcomeStepView(viewModel: viewModel)
+                    case 1:
+                        SkillLevelStepView(viewModel: viewModel)
+                    default:
+                        GoalsStepView(viewModel: viewModel) {
+                            viewModel.completeOnboarding(appState: appState)
+                        }
                     }
-                    .tag(2)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.currentStep)
             }
         }

@@ -3,27 +3,21 @@ import SwiftUI
 struct MainTabView: View {
     var body: some View {
         TabView {
-            Tab("Home", systemImage: "house.fill") {
+            Tab("Chat", systemImage: "bubble.left.and.text.bubble.right.fill") {
                 NavigationStack {
-                    HomeView()
+                    ChatView()
                 }
             }
 
-            Tab("Swing Tips", systemImage: "figure.golf") {
+            Tab("History", systemImage: "clock.fill") {
                 NavigationStack {
-                    SwingAnalysisView()
+                    HistoryView()
                 }
             }
 
-            Tab("Drills", systemImage: "list.bullet.clipboard") {
+            Tab("Settings", systemImage: "gearshape.fill") {
                 NavigationStack {
-                    DrillLibraryView()
-                }
-            }
-
-            Tab("Progress", systemImage: "chart.bar.fill") {
-                NavigationStack {
-                    ProgressTrackerView()
+                    SettingsView()
                 }
             }
         }

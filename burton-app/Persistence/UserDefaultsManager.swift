@@ -2,7 +2,9 @@ import Foundation
 
 struct UserDefaultsManager {
     private static let profileKey = "user_profile"
-    private static let practiceLogKey = "practice_log"
+    private static let conversationsKey = "conversations"
+    private static let swingProfileKey = "swing_profile"
+    private static let maxConversations = 50
 
     // MARK: - User Profile
 
@@ -17,35 +19,41 @@ struct UserDefaultsManager {
         return try? JSONDecoder().decode(UserProfile.self, from: data)
     }
 
-    // MARK: - Practice Log
+    // MARK: - Conversations
 
-    static func savePracticeLog(_ entries: [PracticeLogEntry]) {
-        if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: practiceLogKey)
+    static func saveConversations(_ conversations: [Conversation]) {
+        var toSave = conversations
+        if toSave.count > maxConversations {
+            toSave = Array(toSave.sorted { $0.updatedAt > $1.updatedAt }.prefix(maxConversations))
+        }
+        if let data = try? JSONEncoder().encode(toSave) {
+            UserDefaults.standard.set(data, forKey: conversationsKey)
         }
     }
 
-    static func loadPracticeLog() -> [PracticeLogEntry] {
-        guard let data = UserDefaults.standard.data(forKey: practiceLogKey) else { return [] }
-        return (try? JSONDecoder().decode([PracticeLogEntry].self, from: data)) ?? []
+    static func loadConversations() -> [Conversation] {
+        guard let data = UserDefaults.standard.data(forKey: conversationsKey) else { return [] }
+        return (try? JSONDecoder().decode([Conversation].self, from: data)) ?? []
     }
 
-    static func addPracticeEntry(_ entry: PracticeLogEntry) {
-        var entries = loadPracticeLog()
-        entries.insert(entry, at: 0)
-        savePracticeLog(entries)
+    // MARK: - Swing Profile
+
+    static func saveSwingProfile(_ profile: SwingProfile) {
+        if let data = try? JSONEncoder().encode(profile) {
+            UserDefaults.standard.set(data, forKey: swingProfileKey)
+        }
     }
 
-    static func deletePracticeEntry(id: UUID) {
-        var entries = loadPracticeLog()
-        entries.removeAll { $0.id == id }
-        savePracticeLog(entries)
+    static func loadSwingProfile() -> SwingProfile {
+        guard let data = UserDefaults.standard.data(forKey: swingProfileKey) else { return .empty }
+        return (try? JSONDecoder().decode(SwingProfile.self, from: data)) ?? .empty
     }
 
     // MARK: - Reset
 
     static func resetAll() {
         UserDefaults.standard.removeObject(forKey: profileKey)
-        UserDefaults.standard.removeObject(forKey: practiceLogKey)
+        UserDefaults.standard.removeObject(forKey: conversationsKey)
+        UserDefaults.standard.removeObject(forKey: swingProfileKey)
     }
 }
