@@ -8,6 +8,14 @@ struct ClaudeAPIService {
         UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
     }
 
+    // Dedicated session with longer timeouts for streaming
+    private static let streamingSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }()
+
     // MARK: - Streaming
 
     static func streamMessage(
@@ -16,6 +24,8 @@ struct ClaudeAPIService {
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var receivedContent = false
+
                 do {
                     let request = try buildRequest(
                         systemPrompt: systemPrompt,
@@ -23,7 +33,7 @@ struct ClaudeAPIService {
                         stream: true
                     )
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await streamingSession.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw APIError.invalidResponse
@@ -37,38 +47,51 @@ struct ClaudeAPIService {
                         throw APIError.httpError(httpResponse.statusCode, errorBody)
                     }
 
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
+                    do {
+                        for try await line in bytes.lines {
+                            if Task.isCancelled { break }
 
-                        guard line.hasPrefix("data: ") else { continue }
-                        let jsonString = String(line.dropFirst(6))
+                            guard line.hasPrefix("data: ") else { continue }
+                            let jsonString = String(line.dropFirst(6))
 
-                        guard jsonString != "[DONE]",
-                              let data = jsonString.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let type = json["type"] as? String
-                        else { continue }
+                            guard jsonString != "[DONE]",
+                                  let data = jsonString.data(using: .utf8),
+                                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                  let type = json["type"] as? String
+                            else { continue }
 
-                        if type == "content_block_delta",
-                           let delta = json["delta"] as? [String: Any],
-                           let text = delta["text"] as? String {
-                            continuation.yield(text)
+                            if type == "content_block_delta",
+                               let delta = json["delta"] as? [String: Any],
+                               let text = delta["text"] as? String {
+                                receivedContent = true
+                                continuation.yield(text)
+                            }
+
+                            if type == "message_stop" {
+                                break
+                            }
+
+                            if type == "error",
+                               let error = json["error"] as? [String: Any],
+                               let message = error["message"] as? String {
+                                throw APIError.apiError(message)
+                            }
                         }
-
-                        if type == "message_stop" {
-                            break
-                        }
-
-                        if type == "error",
-                           let error = json["error"] as? [String: Any],
-                           let message = error["message"] as? String {
-                            throw APIError.apiError(message)
-                        }
+                    } catch let urlError as URLError where urlError.code == .cancelled && receivedContent {
+                        // Connection closed after content was received — this is normal, not an error
                     }
 
                     continuation.finish()
+                } catch let urlError as URLError where urlError.code == .cancelled && receivedContent {
+                    // Stream ended after content was delivered — treat as success
+                    continuation.finish()
                 } catch {
-                    continuation.finish(throwing: error)
+                    if receivedContent {
+                        // Got content but connection dropped — still a success
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: error)
+                    }
                 }
             }
 
@@ -76,64 +99,6 @@ struct ClaudeAPIService {
                 task.cancel()
             }
         }
-    }
-
-    // MARK: - Vision (non-streaming)
-
-    static func sendMessageWithImages(
-        systemPrompt: String,
-        textContent: String,
-        imageDataArray: [Data]
-    ) async throws -> String {
-        var contentBlocks: [[String: Any]] = []
-
-        for imageData in imageDataArray {
-            let base64 = imageData.base64EncodedString()
-            contentBlocks.append([
-                "type": "image",
-                "source": [
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": base64
-                ]
-            ])
-        }
-
-        contentBlocks.append([
-            "type": "text",
-            "text": textContent
-        ])
-
-        let messages: [[String: Any]] = [
-            ["role": "user", "content": contentBlocks]
-        ]
-
-        let request = try buildRequest(
-            systemPrompt: systemPrompt,
-            messages: messages,
-            stream: false
-        )
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw APIError.httpError(httpResponse.statusCode, body)
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = json["content"] as? [[String: Any]],
-              let firstBlock = content.first,
-              let text = firstBlock["text"] as? String
-        else {
-            throw APIError.parseError
-        }
-
-        return text
     }
 
     // MARK: - Simple non-streaming request (for internal tasks like titling/profiling)
@@ -186,6 +151,7 @@ struct ClaudeAPIService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
+        request.timeoutInterval = stream ? 120 : 60
 
         let body: [String: Any] = [
             "system": systemPrompt,

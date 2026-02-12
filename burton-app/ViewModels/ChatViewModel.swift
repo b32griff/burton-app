@@ -156,7 +156,7 @@ class ChatViewModel {
                 }
                 contentBlocks.append([
                     "type": "text",
-                    "text": "\(text)\n\nThe images are key frames extracted from a video, showing the swing sequence from setup to follow-through."
+                    "text": "\(text)\n\nThese images are from a continuous golf swing video, captured throughout the entire motion from setup to follow-through. Analyze it as one complete swing."
                 ])
 
                 let systemPrompt = self.buildSystemPrompt(videoMode: true)

@@ -2,7 +2,7 @@ import AVFoundation
 import UIKit
 
 struct VideoFrameExtractor {
-    static func extractKeyFrames(from url: URL, count: Int = 4, maxDimension: CGFloat = 1024) async throws -> [Data] {
+    static func extractKeyFrames(from url: URL, count: Int = 10, maxDimension: CGFloat = 1024) async throws -> [Data] {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration)
         let totalSeconds = CMTimeGetSeconds(duration)
