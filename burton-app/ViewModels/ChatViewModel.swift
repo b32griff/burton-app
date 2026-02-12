@@ -322,7 +322,7 @@ class ChatViewModel {
     }
 
     private func triggerProfileUpdateIfNeeded() {
-        guard currentConversation.messages.count >= 4,
+        guard currentConversation.messages.count >= 2,
               let memoryManager
         else { return }
 

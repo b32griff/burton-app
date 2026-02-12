@@ -6,60 +6,19 @@ struct RecommendedDrillsView: View {
 
     var body: some View {
         ScrollView {
-            if recommendedDrills.isEmpty {
+            if recommendations.isEmpty {
                 emptyState
             } else {
                 VStack(spacing: 0) {
-                    // Issues the coach identified
-                    if !memoryManager.swingProfile.identifiedIssues.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Your Coach Identified")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .textCase(.uppercase)
-
-                            FlowLayout(spacing: 8) {
-                                ForEach(memoryManager.swingProfile.identifiedIssues, id: \.self) { issue in
-                                    Text(issue)
-                                        .font(.caption.weight(.medium))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(.golfGreen.opacity(0.15), in: Capsule())
-                                        .foregroundStyle(.golfGreen)
-                                }
-                            }
+                    ForEach(prioritySections, id: \.priority) { section in
+                        if !section.items.isEmpty {
+                            prioritySection(section)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-                        .padding(.bottom, 12)
-                    }
-
-                    // Recommended drills
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Recommended Drills")
-                            .font(.title3.bold())
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
-
-                        Text("Updated automatically as you chat with your coach.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 20)
-
-                        LazyVStack(spacing: 0) {
-                            ForEach(recommendedDrills) { drill in
-                                NavigationLink(destination: DrillDetailView(drill: drill)) {
-                                    DrillCard(drill: drill, issue: matchingIssue(for: drill))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.top, 4)
                     }
                 }
             }
         }
-        .navigationTitle("Drills")
+        .navigationTitle("Your Drills")
     }
 
     // MARK: - Empty State
@@ -75,7 +34,7 @@ struct RecommendedDrillsView: View {
             Text("No Drills Yet")
                 .font(.title3.bold())
 
-            Text("Start chatting with your coach about your swing — upload videos, ask questions, describe what's going wrong. Your personalized drills will show up here automatically.")
+            Text("Chat with your coach or upload a swing video. Personalized drills will appear here based on what the AI sees in your swing.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -85,54 +44,96 @@ struct RecommendedDrillsView: View {
         }
     }
 
-    // MARK: - Drill Matching
+    // MARK: - Priority Section
 
-    private var recommendedDrills: [Drill] {
-        let issues = memoryManager.swingProfile.identifiedIssues
-        let focusAreas = memoryManager.swingProfile.currentFocusAreas
+    private func prioritySection(_ section: PrioritySection) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(section.color)
+                    .frame(width: 10, height: 10)
 
-        guard !issues.isEmpty || !focusAreas.isEmpty else { return [] }
-
-        let allTerms = issues + focusAreas
-
-        let matchingIssues = SwingIssueData.all.filter { issue in
-            let issueName = issue.name.lowercased()
-            return allTerms.contains { term in
-                let t = term.lowercased()
-                return issueName == t
-                    || issueName.contains(t)
-                    || t.contains(issueName)
-                    || keywordsOverlap(issueName, t)
+                Text(section.title)
+                    .font(.headline)
             }
-        }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
 
-        let drillIDs = Set(matchingIssues.flatMap(\.linkedDrillIDs))
-        return DrillData.all.filter { drillIDs.contains($0.id) }
+            Text(section.subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+
+            LazyVStack(spacing: 0) {
+                ForEach(section.items) { item in
+                    NavigationLink(destination: DrillDetailView(drill: item.drill)) {
+                        DrillCard(drill: item.drill, reason: item.reason, priorityColor: section.color)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 4)
+        }
     }
 
-    private func matchingIssue(for drill: Drill) -> String? {
-        let allTerms = memoryManager.swingProfile.identifiedIssues + memoryManager.swingProfile.currentFocusAreas
+    // MARK: - Data
 
-        let match = SwingIssueData.all.first { issue in
-            guard issue.linkedDrillIDs.contains(drill.id) else { return false }
-            let issueName = issue.name.lowercased()
-            return allTerms.contains { term in
-                let t = term.lowercased()
-                return issueName == t
-                    || issueName.contains(t)
-                    || t.contains(issueName)
-                    || keywordsOverlap(issueName, t)
-            }
-        }
-
-        return match?.name
+    struct DrillItem: Identifiable {
+        let id: String
+        let drill: Drill
+        let reason: String
+        let priority: PrioritizedIssue.IssuePriority
     }
 
-    private func keywordsOverlap(_ a: String, _ b: String) -> Bool {
-        let stopWords: Set<String> = ["the", "a", "an", "my", "i", "and", "or", "of", "to", "is", "in", "it"]
-        let wordsA = Set(a.split(separator: " ").map(String.init)).subtracting(stopWords)
-        let wordsB = Set(b.split(separator: " ").map(String.init)).subtracting(stopWords)
-        return !wordsA.intersection(wordsB).isEmpty
+    struct PrioritySection {
+        let priority: String
+        let title: String
+        let subtitle: String
+        let color: Color
+        let items: [DrillItem]
+    }
+
+    private var recommendations: [DrillItem] {
+        let drillMap = Dictionary(uniqueKeysWithValues: DrillData.all.map { ($0.id, $0) })
+
+        return memoryManager.swingProfile.recommendedDrills.compactMap { rec in
+            guard let drill = drillMap[rec.drillID] else { return nil }
+            return DrillItem(id: rec.drillID, drill: drill, reason: rec.reason, priority: rec.priority)
+        }
+    }
+
+    private var prioritySections: [PrioritySection] {
+        let items = recommendations
+        guard !items.isEmpty else { return [] }
+
+        var sections: [PrioritySection] = []
+
+        for level in PrioritizedIssue.IssuePriority.allCases {
+            let matching = items.filter { $0.priority == level }
+            guard !matching.isEmpty else { continue }
+
+            let config = priorityConfig(for: level)
+            sections.append(PrioritySection(
+                priority: level.rawValue,
+                title: config.title,
+                subtitle: config.subtitle,
+                color: config.color,
+                items: matching
+            ))
+        }
+
+        return sections
+    }
+
+    private func priorityConfig(for priority: PrioritizedIssue.IssuePriority) -> (title: String, subtitle: String, color: Color) {
+        switch priority {
+        case .high:
+            return ("High Priority", "Focus on these first", .red)
+        case .medium:
+            return ("Medium Priority", "Work on these next", .orange)
+        case .low:
+            return ("Low Priority", "Keep these in mind", .blue)
+        }
     }
 }
 
@@ -140,94 +141,46 @@ struct RecommendedDrillsView: View {
 
 struct DrillCard: View {
     let drill: Drill
-    let issue: String?
+    let reason: String
+    var priorityColor: Color = .golfGreen
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(drill.name)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(priorityColor)
+                .frame(width: 4)
+                .padding(.vertical, 8)
 
-            if let issue {
-                Text("For: \(issue)")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.golfGreen)
-            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(drill.name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
 
-            HStack(spacing: 16) {
-                Label("\(drill.durationMinutes) min", systemImage: "clock")
-                Label(drill.difficulty.rawValue, systemImage: "star")
-                Label(drill.equipment.first ?? "None", systemImage: "sportscourt")
+                if !reason.isEmpty {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 16) {
+                    Label("\(drill.durationMinutes) min", systemImage: "clock")
+                    Label(drill.difficulty.rawValue, systemImage: "star")
+                    Label(drill.equipment.first ?? "None", systemImage: "sportscourt")
+                }
+                .font(.caption)
+                .foregroundStyle(.tertiary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .padding(16)
         }
-        .padding(16)
         .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 14))
         .padding(.horizontal, 20)
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Flow Layout for tags
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = layout(proposal: proposal, subviews: subviews)
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = layout(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                proposal: ProposedViewSize(result.sizes[index])
-            )
-        }
-    }
-
-    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> LayoutResult {
-        let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
-        var sizes: [CGSize] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            sizes.append(size)
-
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-
-            positions.append(CGPoint(x: x, y: y))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-        }
-
-        return LayoutResult(
-            size: CGSize(width: maxWidth, height: y + rowHeight),
-            positions: positions,
-            sizes: sizes
-        )
-    }
-
-    struct LayoutResult {
-        var size: CGSize
-        var positions: [CGPoint]
-        var sizes: [CGSize]
     }
 }

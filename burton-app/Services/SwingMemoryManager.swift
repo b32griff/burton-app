@@ -16,7 +16,11 @@ class SwingMemoryManager {
         if !swingProfile.summary.isEmpty {
             parts.append("Overall: \(swingProfile.summary)")
         }
-        if !swingProfile.identifiedIssues.isEmpty {
+        if !swingProfile.prioritizedIssues.isEmpty {
+            let sorted = swingProfile.prioritizedIssues.sorted { $0.priority.sortOrder < $1.priority.sortOrder }
+            let issueList = sorted.map { "\($0.name) (\($0.priority.rawValue))" }.joined(separator: ", ")
+            parts.append("Issues by priority: \(issueList)")
+        } else if !swingProfile.identifiedIssues.isEmpty {
             parts.append("Issues: \(swingProfile.identifiedIssues.joined(separator: ", "))")
         }
         if !swingProfile.strengths.isEmpty {
@@ -35,7 +39,11 @@ class SwingMemoryManager {
     }
 
     func updateProfile(from conversation: Conversation) async {
-        guard conversation.messages.count >= 4 else { return }
+        debugLog("updateProfile called with \(conversation.messages.count) messages")
+        guard conversation.messages.count >= 2 else {
+            debugLog("Skipped — not enough messages")
+            return
+        }
 
         let conversationSummary = conversation.messages.map { msg in
             "\(msg.role.rawValue): \(msg.content.prefix(300))"
@@ -50,19 +58,37 @@ class SwingMemoryManager {
         }
 
         let issueNames = SwingIssueData.all.map(\.name)
+        let drillCatalog = DrillData.all.map { "\($0.id): \($0.name) (\($0.category.rawValue), \($0.difficulty.rawValue))" }.joined(separator: "\n")
 
         let systemPrompt = """
-        You are a golf coaching data analyst. Given a conversation between a golf coach and student, update the student's swing profile JSON. Merge new information with existing data — don't remove things unless explicitly corrected. Add a progress note summarizing this session.
+        You are a golf coaching data analyst. Given a conversation between a golf coach and student, update the student's swing profile JSON. Merge new information with existing data — don't remove things unless explicitly corrected.
 
-        IMPORTANT: For "identifiedIssues", you MUST use values from this exact list when applicable: \(issueNames.joined(separator: ", ")). Only add custom issue names if the issue doesn't fit any of these categories. For "currentFocusAreas", also prefer these exact names when relevant.
+        IMPORTANT: For "identifiedIssues" and "prioritizedIssues", use values from this list when applicable: \(issueNames.joined(separator: ", ")).
 
-        Respond with ONLY valid JSON matching this structure (no markdown, no explanation):
+        For "prioritizedIssues", assign each issue a priority:
+        - "high": Most impactful problem to fix first. Usually 1-2 max.
+        - "medium": Important but secondary.
+        - "low": Minor or awareness-level.
+
+        For "recommendedDrills", pick the MOST RELEVANT drills for THIS specific user based on what you observed in the conversation (including any video analysis). Use ONLY drill IDs from this catalog:
+        \(drillCatalog)
+
+        Each recommended drill needs:
+        - "drillID": exact ID from the catalog above
+        - "reason": 1 sentence explaining WHY this drill helps THIS user specifically (reference their actual swing issues, not generic advice)
+        - "priority": "high", "medium", or "low"
+
+        Recommend 3-6 drills total. Prioritize drills that directly address the user's biggest issues.
+
+        Respond with ONLY valid JSON (no markdown, no explanation):
         {
             "summary": "Overall assessment paragraph",
             "identifiedIssues": ["issue1", "issue2"],
-            "strengths": ["strength1", "strength2"],
-            "currentFocusAreas": ["focus1", "focus2"],
-            "progressNotes": [{"note": "Session summary note"}]
+            "prioritizedIssues": [{"name": "issue1", "priority": "high"}],
+            "recommendedDrills": [{"drillID": "drill_id", "reason": "Why this helps you specifically", "priority": "high"}],
+            "strengths": ["strength1"],
+            "currentFocusAreas": ["focus1"],
+            "progressNotes": [{"note": "Session summary"}]
         }
         """
 
@@ -82,36 +108,80 @@ class SwingMemoryManager {
                 userMessage: userMessage
             )
 
-            guard let data = response.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return }
+            debugLog("Got response (\(response.count) chars): \(response.prefix(300))")
 
-            // Merge updates
-            if let summary = json["summary"] as? String, !summary.isEmpty {
-                swingProfile.summary = summary
+            // Extract JSON from response — handle markdown fences, extra text, etc.
+            let json: [String: Any]
+            if let parsed = extractJSON(from: response) {
+                json = parsed
+            } else {
+                debugLog("Failed to parse JSON from response")
+                return
             }
-            if let issues = json["identifiedIssues"] as? [String] {
-                let merged = Set(swingProfile.identifiedIssues).union(Set(issues))
-                swingProfile.identifiedIssues = Array(merged)
-            }
-            if let strengths = json["strengths"] as? [String] {
-                let merged = Set(swingProfile.strengths).union(Set(strengths))
-                swingProfile.strengths = Array(merged)
-            }
-            if let focus = json["currentFocusAreas"] as? [String], !focus.isEmpty {
-                swingProfile.currentFocusAreas = focus
-            }
-            if let notes = json["progressNotes"] as? [[String: Any]] {
-                for noteDict in notes {
-                    if let noteText = noteDict["note"] as? String {
-                        swingProfile.progressNotes.append(ProgressNote(note: noteText))
+
+            debugLog("Parsed JSON keys: \(json.keys.sorted())")
+
+            // Merge updates on MainActor so @Observable triggers UI refresh
+            await MainActor.run {
+                if let summary = json["summary"] as? String, !summary.isEmpty {
+                    swingProfile.summary = summary
+                }
+                if let issues = json["identifiedIssues"] as? [String] {
+                    let merged = Set(swingProfile.identifiedIssues).union(Set(issues))
+                    swingProfile.identifiedIssues = Array(merged)
+                }
+                if let prioritized = json["prioritizedIssues"] as? [[String: Any]] {
+                    var newPrioritized: [PrioritizedIssue] = []
+                    for item in prioritized {
+                        if let name = item["name"] as? String,
+                           let priorityStr = item["priority"] as? String,
+                           let priority = PrioritizedIssue.IssuePriority(rawValue: priorityStr) {
+                            newPrioritized.append(PrioritizedIssue(name: name, priority: priority))
+                        }
+                    }
+                    if !newPrioritized.isEmpty {
+                        swingProfile.prioritizedIssues = newPrioritized
+                        debugLog("Updated \(newPrioritized.count) prioritized issues")
                     }
                 }
+                if let drills = json["recommendedDrills"] as? [[String: Any]] {
+                    let validDrillIDs = Set(DrillData.all.map(\.id))
+                    var newDrills: [RecommendedDrill] = []
+                    for item in drills {
+                        if let drillID = item["drillID"] as? String,
+                           validDrillIDs.contains(drillID),
+                           let reason = item["reason"] as? String,
+                           let priorityStr = item["priority"] as? String,
+                           let priority = PrioritizedIssue.IssuePriority(rawValue: priorityStr) {
+                            newDrills.append(RecommendedDrill(drillID: drillID, reason: reason, priority: priority))
+                        }
+                    }
+                    if !newDrills.isEmpty {
+                        swingProfile.recommendedDrills = newDrills
+                        debugLog("Updated \(newDrills.count) recommended drills")
+                    }
+                }
+                if let strengths = json["strengths"] as? [String] {
+                    let merged = Set(swingProfile.strengths).union(Set(strengths))
+                    swingProfile.strengths = Array(merged)
+                }
+                if let focus = json["currentFocusAreas"] as? [String], !focus.isEmpty {
+                    swingProfile.currentFocusAreas = focus
+                }
+                if let notes = json["progressNotes"] as? [[String: Any]] {
+                    for noteDict in notes {
+                        if let noteText = noteDict["note"] as? String {
+                            swingProfile.progressNotes.append(ProgressNote(note: noteText))
+                        }
+                    }
+                }
+
+                debugLog("Profile updated — issues: \(self.swingProfile.identifiedIssues.count), prioritized: \(self.swingProfile.prioritizedIssues.count), strengths: \(self.swingProfile.strengths.count)")
             }
 
             save()
         } catch {
-            // Profile update is best-effort; don't surface errors
+            debugLog("Profile update failed: \(error.localizedDescription)")
         }
     }
 
@@ -122,5 +192,50 @@ class SwingMemoryManager {
 
     private func save() {
         UserDefaultsManager.saveSwingProfile(swingProfile)
+    }
+
+    /// Extract a JSON dictionary from a response that might contain markdown fences or extra text
+    private func extractJSON(from response: String) -> [String: Any]? {
+        // First try: direct parse after cleaning markdown fences
+        let cleaned = response
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let data = cleaned.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json
+        }
+
+        // Second try: find the outermost { } braces
+        guard let start = cleaned.firstIndex(of: "{"),
+              let end = cleaned.lastIndex(of: "}")
+        else { return nil }
+
+        let jsonSubstring = String(cleaned[start...end])
+        if let data = jsonSubstring.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json
+        }
+
+        return nil
+    }
+
+    private func debugLog(_ message: String) {
+        let logFile = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("swing_memory_debug.log")
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: logFile.path) {
+                if let handle = try? FileHandle(forWritingTo: logFile) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: logFile)
+            }
+        }
     }
 }
