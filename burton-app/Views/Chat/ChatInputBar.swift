@@ -56,13 +56,15 @@ struct ChatInputBar: View {
                     .padding(.vertical, 8)
                     .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 20))
 
-                if isStreaming {
+                if isStreaming && !canSend {
+                    // Only show stop button when streaming AND user hasn't typed anything
                     Button(action: onStop) {
                         Image(systemName: "stop.circle.fill")
                             .font(.title2)
                             .foregroundStyle(.red)
                     }
                 } else {
+                    // Show send button when user has text (even during streaming)
                     Button(action: onSend) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.title2)
