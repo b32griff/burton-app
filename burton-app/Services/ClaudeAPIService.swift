@@ -105,7 +105,8 @@ struct ClaudeAPIService {
 
     static func sendSimpleMessage(
         systemPrompt: String,
-        userMessage: String
+        userMessage: String,
+        maxTokens: Int = 2048
     ) async throws -> String {
         let messages: [[String: Any]] = [
             ["role": "user", "content": userMessage]
@@ -114,7 +115,8 @@ struct ClaudeAPIService {
         let request = try buildRequest(
             systemPrompt: systemPrompt,
             messages: messages,
-            stream: false
+            stream: false,
+            maxTokens: maxTokens
         )
 
         let (data, response) = try await URLSession.shared.data(for: request)

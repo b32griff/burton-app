@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ChatSheet: Identifiable {
-    case videoPicker, settings
+    case videoPicker, videoRecorder, settings
     var id: Self { self }
 }
 
@@ -10,6 +10,7 @@ struct ChatView: View {
     @Environment(SwingMemoryManager.self) private var memoryManager
     @State private var viewModel = ChatViewModel()
     @State private var activeSheet: ChatSheet?
+    @State private var showVideoOptions = false
 
     var initialConversation: Conversation?
 
@@ -35,7 +36,7 @@ struct ChatView: View {
                 stagedThumbnailPath: viewModel.stagedThumbnailPath,
                 onSend: { viewModel.sendMessage() },
                 onStop: { viewModel.stopStreaming() },
-                onVideoTap: { activeSheet = .videoPicker },
+                onVideoTap: { showVideoOptions = true },
                 onClearVideo: { viewModel.clearStagedVideo() }
             )
         }
@@ -64,9 +65,22 @@ struct ChatView: View {
                 VideoPicker { url in
                     viewModel.stageVideo(url: url)
                 }
+            case .videoRecorder:
+                VideoRecorder { url in
+                    viewModel.stageVideo(url: url)
+                }
             case .settings:
                 SettingsSheet()
             }
+        }
+        .confirmationDialog("Add Video", isPresented: $showVideoOptions) {
+            Button("Record Video") {
+                activeSheet = .videoRecorder
+            }
+            Button("Choose from Library") {
+                activeSheet = .videoPicker
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .onAppear {
             viewModel.configure(appState: appState, memoryManager: memoryManager)

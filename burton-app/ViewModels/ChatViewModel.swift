@@ -24,6 +24,7 @@ class ChatViewModel {
     func configure(appState: AppState, memoryManager: SwingMemoryManager) {
         self.appState = appState
         self.memoryManager = memoryManager
+        cleanupEmptyMessages()
     }
 
     // MARK: - Send Message
@@ -31,7 +32,14 @@ class ChatViewModel {
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideo = stagedVideoURL != nil
-        guard (!text.isEmpty || hasVideo), !isStreaming else { return }
+        guard !text.isEmpty || hasVideo else { return }
+
+        // Safety: if streaming got stuck, force-reset it
+        if isStreaming {
+            streamTask?.cancel()
+            streamTask = nil
+            isStreaming = false
+        }
 
         let messageText = text.isEmpty ? "Analyze my golf swing from this video." : text
         inputText = ""
@@ -163,7 +171,7 @@ class ChatViewModel {
                 }
                 contentBlocks.append([
                     "type": "text",
-                    "text": "\(text)\n\nThese images are from a continuous golf swing video, captured throughout the entire motion from setup to follow-through. Analyze it as one complete swing."
+                    "text": "\(text)\n\nThese images are sequential frames from one continuous golf swing video, from setup through finish. Analyze this swing fresh — describe what you actually see in each phase before diagnosing. Follow your full analysis protocol."
                 ])
 
                 let systemPrompt = self.buildSystemPrompt(videoMode: true)
@@ -230,11 +238,20 @@ class ChatViewModel {
     func loadConversation(_ conversation: Conversation) {
         persistConversation()
         currentConversation = conversation
+        cleanupEmptyMessages()
         inputText = ""
         errorMessage = nil
     }
 
     // MARK: - Private
+
+    /// Remove any trailing empty assistant messages left from a stuck stream
+    private func cleanupEmptyMessages() {
+        while let last = currentConversation.messages.last,
+              last.role == .assistant, last.content.isEmpty {
+            currentConversation.messages.removeLast()
+        }
+    }
 
     private func buildSystemPrompt(videoMode: Bool = false) -> String {
         guard let appState else { return "" }

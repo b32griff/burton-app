@@ -107,7 +107,8 @@ class SwingMemoryManager {
         do {
             let response = try await ClaudeAPIService.sendSimpleMessage(
                 systemPrompt: systemPrompt,
-                userMessage: userMessage
+                userMessage: userMessage,
+                maxTokens: 4096
             )
 
             debugLog("Got response (\(response.count) chars): \(response.prefix(300))")
