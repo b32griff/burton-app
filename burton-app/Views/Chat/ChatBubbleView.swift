@@ -174,7 +174,7 @@ struct MessageBubbleShape: Shape {
 // MARK: - Typing Indicator
 
 struct TypingIndicator: View {
-    @State private var phase = 0.0
+    @State private var activeDot = 0
 
     var body: some View {
         HStack(spacing: 4) {
@@ -182,26 +182,16 @@ struct TypingIndicator: View {
                 Circle()
                     .fill(Color(.systemGray3))
                     .frame(width: 7, height: 7)
-                    .scaleEffect(dotScale(for: index))
-                    .opacity(dotOpacity(for: index))
+                    .scaleEffect(activeDot == index ? 1.0 : 0.6)
+                    .opacity(activeDot == index ? 1.0 : 0.4)
+                    .animation(.easeInOut(duration: 0.3), value: activeDot)
             }
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                phase = 1.0
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(400))
+                activeDot = (activeDot + 1) % 3
             }
         }
-    }
-
-    private func dotScale(for index: Int) -> CGFloat {
-        let offset = Double(index) * 0.15
-        let value = sin((phase + offset) * .pi)
-        return 0.7 + 0.3 * value
-    }
-
-    private func dotOpacity(for index: Int) -> Double {
-        let offset = Double(index) * 0.15
-        let value = sin((phase + offset) * .pi)
-        return 0.4 + 0.6 * value
     }
 }

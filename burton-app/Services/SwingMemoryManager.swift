@@ -189,9 +189,8 @@ class SwingMemoryManager {
                 }
 
                 debugLog("Profile updated — issues: \(self.swingProfile.identifiedIssues.count), prioritized: \(self.swingProfile.prioritizedIssues.count), strengths: \(self.swingProfile.strengths.count)")
+                self.save()
             }
-
-            save()
         } catch {
             debugLog("Profile update failed: \(error.localizedDescription)")
         }

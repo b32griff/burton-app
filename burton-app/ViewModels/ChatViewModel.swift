@@ -353,13 +353,22 @@ class ChatViewModel {
     }
 
     private func buildAPIMessages() -> [[String: Any]] {
-        currentConversation.messages.dropLast().compactMap { msg -> [String: Any]? in
-            guard !msg.content.isEmpty else { return nil }
-            return [
-                "role": msg.role.rawValue,
-                "content": msg.content
-            ]
+        var result: [[String: Any]] = []
+        for msg in currentConversation.messages.dropLast() {
+            guard !msg.content.isEmpty else { continue }
+            // Merge consecutive same-role messages to satisfy alternating role requirement
+            if let lastRole = result.last?["role"] as? String,
+               lastRole == msg.role.rawValue,
+               let lastContent = result.last?["content"] as? String {
+                result[result.count - 1]["content"] = lastContent + "\n\n" + msg.content
+            } else {
+                result.append([
+                    "role": msg.role.rawValue,
+                    "content": msg.content
+                ])
+            }
         }
+        return result
     }
 
     private func persistConversation() {

@@ -58,6 +58,15 @@ struct ChatView: View {
         }
         .navigationTitle(viewModel.currentConversation.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    viewModel.startNewConversation()
+                } label: {
+                    Image(systemName: "plus.message")
+                }
+            }
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .videoPicker:
@@ -91,33 +100,51 @@ struct ChatView: View {
     }
 
     private var emptyState: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer()
-                Spacer()
+        GeometryReader { geo in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
 
-                CaddieLogoView(size: 72, style: .badge)
+                    CaddieLogoView(size: 96, style: .badge)
 
-                Spacer().frame(height: 16)
+                    Text("Caddie AI")
+                        .font(.title.bold())
+                        .padding(.top, 20)
 
-                Text("Caddie AI")
-                    .font(.headline)
+                    Text(greeting)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
 
-                Spacer().frame(height: 4)
-
-                Text("Ask anything about your game")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer().frame(height: 28)
-
-                VStack(spacing: 10) {
-                    ForEach(personalizedSuggestions, id: \.text) { suggestion in
-                        suggestionButton(suggestion.text)
+                    VStack(spacing: 12) {
+                        ForEach(personalizedSuggestions, id: \.text) { suggestion in
+                            suggestionButton(suggestion.text)
+                        }
                     }
-                }
+                    .padding(.top, 40)
 
-                Spacer()
+                    Spacer(minLength: 20)
+                }
+                .frame(minHeight: geo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let name = appState.userProfile.name
+        if name.isEmpty {
+            switch hour {
+            case 5..<12: return "Good morning — what are we working on?"
+            case 12..<17: return "Good afternoon — what are we working on?"
+            default: return "Good evening — what are we working on?"
+            }
+        } else {
+            switch hour {
+            case 5..<12: return "Good morning, \(name)"
+            case 12..<17: return "Good afternoon, \(name)"
+            default: return "Good evening, \(name)"
             }
         }
     }
@@ -128,12 +155,12 @@ struct ChatView: View {
             viewModel.sendMessage()
         } label: {
             Text(text)
-                .font(.subheadline)
+                .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 12))
         }
         .padding(.horizontal, 24)
     }
