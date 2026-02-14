@@ -75,7 +75,7 @@ struct SkillLevelStepView: View {
                 } label: {
                     Text("Continue")
                         .font(.headline)
-                        .foregroundStyle(.golfGreen)
+                        .foregroundStyle(.appAccent)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(.white, in: RoundedRectangle(cornerRadius: 14))

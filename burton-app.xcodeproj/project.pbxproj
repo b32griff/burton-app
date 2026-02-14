@@ -254,6 +254,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Caddie AI";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Record your golf swing for AI analysis";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio with your swing video";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -300,6 +301,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Caddie AI";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Record your golf swing for AI analysis";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Record audio with your swing video";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;

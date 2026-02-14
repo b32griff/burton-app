@@ -19,4 +19,13 @@ struct ChatMessage: Identifiable, Codable {
         self.timestamp = timestamp
         self.imageReferences = imageReferences
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        role = try container.decode(MessageRole.self, forKey: .role)
+        content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
+        timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
+        imageReferences = try container.decodeIfPresent([String].self, forKey: .imageReferences) ?? []
+    }
 }

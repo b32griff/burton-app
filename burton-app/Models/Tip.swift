@@ -9,9 +9,9 @@ enum Difficulty: String, Codable, CaseIterable, Identifiable {
 
     var color: String {
         switch self {
-        case .beginner: "golfGreen"
-        case .intermediate: "sandTrap"
-        case .advanced: "darkFairway"
+        case .beginner: "appAccent"
+        case .intermediate: "warmGray"
+        case .advanced: "appAccentDark"
         }
     }
 }

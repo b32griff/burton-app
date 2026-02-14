@@ -2,9 +2,24 @@ import AVFoundation
 import UIKit
 
 struct VideoFrameExtractor {
-    static func extractKeyFrames(from url: URL, count: Int = 6, maxDimension: CGFloat = 768) async throws -> [Data] {
+    static func extractKeyFrames(from url: URL, count: Int = 8, maxDimension: CGFloat = 1280) async throws -> [Data] {
+        // Run on a background thread to avoid blocking and potential deadlocks
+        // with AVAssetImageGenerator's async API
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let frames = try extractFramesSync(from: url, count: count, maxDimension: maxDimension)
+                    continuation.resume(returning: frames)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private static func extractFramesSync(from url: URL, count: Int, maxDimension: CGFloat) throws -> [Data] {
         let asset = AVURLAsset(url: url)
-        let duration = try await asset.load(.duration)
+        let duration = asset.duration
         let totalSeconds = CMTimeGetSeconds(duration)
 
         guard totalSeconds > 0 else { return [] }
@@ -21,10 +36,10 @@ struct VideoFrameExtractor {
             let fraction = Double(i) / Double(max(count - 1, 1))
             let time = CMTime(seconds: totalSeconds * fraction, preferredTimescale: 600)
 
-            let (cgImage, _) = try await generator.image(at: time)
+            let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
             let uiImage = UIImage(cgImage: cgImage)
 
-            if let jpegData = uiImage.jpegData(compressionQuality: 0.6) {
+            if let jpegData = uiImage.jpegData(compressionQuality: 0.85) {
                 frames.append(jpegData)
             }
         }

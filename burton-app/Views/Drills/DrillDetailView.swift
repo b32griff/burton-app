@@ -41,7 +41,7 @@ struct DrillDetailView: View {
                                 .font(.subheadline.bold())
                                 .foregroundStyle(.white)
                                 .frame(width: 28, height: 28)
-                                .background(.golfGreen, in: Circle())
+                                .background(.appAccent, in: Circle())
 
                             Text(step)
                                 .font(.subheadline)

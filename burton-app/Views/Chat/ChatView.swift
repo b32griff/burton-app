@@ -1,8 +1,12 @@
 import SwiftUI
 
 enum ChatSheet: Identifiable {
-    case videoPicker, videoRecorder, settings
+    case videoPicker, videoRecorder
     var id: Self { self }
+}
+
+extension Notification.Name {
+    static let startNewConversation = Notification.Name("startNewConversation")
 }
 
 struct ChatView: View {
@@ -54,23 +58,6 @@ struct ChatView: View {
         }
         .navigationTitle(viewModel.currentConversation.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    activeSheet = .settings
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    viewModel.startNewConversation()
-                } label: {
-                    Image(systemName: "plus.message")
-                }
-            }
-        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .videoPicker:
@@ -81,8 +68,6 @@ struct ChatView: View {
                 VideoRecorder { url in
                     viewModel.stageVideo(url: url)
                 }
-            case .settings:
-                SettingsSheet()
             }
         }
         .confirmationDialog("Add Video", isPresented: $showVideoOptions) {
@@ -100,33 +85,37 @@ struct ChatView: View {
                 viewModel.loadConversation(initialConversation)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .startNewConversation)) { _ in
+            viewModel.startNewConversation()
+        }
     }
 
     private var emptyState: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                Spacer().frame(height: 60)
+            VStack(spacing: 0) {
+                Spacer()
+                Spacer()
 
-                Image(systemName: "figure.golf")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.golfGreen)
+                CaddieLogoView(size: 72, style: .badge)
 
-                Text("Your AI Swing Coach")
-                    .font(.title2.bold())
+                Spacer().frame(height: 16)
 
-                Text("Describe your swing issues or upload a video and I'll help you fix them.")
-                    .font(.body)
+                Text("Caddie AI")
+                    .font(.headline)
+
+                Spacer().frame(height: 4)
+
+                Text("Ask anything about your game")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    suggestionButton("I keep slicing my driver")
-                    suggestionButton("What drills can help my short game?")
-                    suggestionButton("I keep hitting fat shots — help!")
-                    suggestionButton("Create a 30-minute practice plan")
+                Spacer().frame(height: 28)
+
+                VStack(spacing: 10) {
+                    ForEach(personalizedSuggestions, id: \.text) { suggestion in
+                        suggestionButton(suggestion.text)
+                    }
                 }
-                .padding(.top, 8)
 
                 Spacer()
             }
@@ -138,17 +127,13 @@ struct ChatView: View {
             viewModel.inputText = text
             viewModel.sendMessage()
         } label: {
-            HStack {
-                Text(text)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Spacer()
-                Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(.golfGreen)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 12))
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 10))
         }
         .padding(.horizontal, 24)
     }
@@ -156,23 +141,114 @@ struct ChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.currentConversation.messages) { message in
-                        ChatBubbleView(message: message)
-                            .id(message.id)
+                LazyVStack(spacing: 2) {
+                    let messages = viewModel.currentConversation.messages
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        let isLastInGroup = isLastMessageInGroup(at: index, in: messages)
+                        let showTimestamp = shouldShowTimestamp(at: index, in: messages)
+
+                        VStack(spacing: 0) {
+                            if showTimestamp {
+                                Text(message.timestamp, style: .time)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.vertical, 8)
+                            }
+
+                            ChatBubbleView(
+                                message: message,
+                                isLastInGroup: isLastInGroup,
+                                isActivelyStreaming: viewModel.isStreaming && index == messages.count - 1
+                            )
+                                .padding(.bottom, isLastInGroup ? 8 : 0)
+                        }
+                        .id(message.id)
                     }
+
+                    // Video analyzing indicator
+                    if viewModel.isAnalyzingVideo {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Analyzing your swing...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 8)
+                    }
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom")
                 }
                 .padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: viewModel.currentConversation.messages.count) {
-                // Only scroll when a new message is added (user sends), not during streaming
-                if let lastMessage = viewModel.currentConversation.messages.last {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            }
+            .onChange(of: viewModel.currentConversation.messages.last?.content) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel.isAnalyzingVideo) {
+                if viewModel.isAnalyzingVideo {
                     withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        proxy.scrollTo("bottom", anchor: .bottom)
                     }
                 }
             }
         }
+    }
+
+    private var personalizedSuggestions: [(text: String, icon: String)] {
+        let goals = appState.userProfile.goals
+        var suggestions: [(text: String, icon: String)] = []
+
+        // Map user goals to relevant prompts
+        let goalPrompts: [ImprovementGoal: (text: String, icon: String)] = [
+            .distance: ("How do I add distance off the tee?", "arrow.up.right"),
+            .accuracy: ("I keep missing fairways right", "arrow.turn.up.right"),
+            .shortGame: ("Help with my chipping", "flag"),
+            .putting: ("I keep three-putting", "circle.dotted"),
+            .consistency: ("My ball striking is inconsistent", "arrow.triangle.2.circlepath"),
+            .mentalGame: ("I get nervous on the first tee", "brain.head.profile"),
+            .courseManagement: ("How to play a tight par 4?", "map"),
+            .lowerScores: ("Fastest way to drop 5 strokes?", "chart.line.downtrend.xyaxis"),
+        ]
+
+        for goal in goals {
+            if let prompt = goalPrompts[goal], suggestions.count < 3 {
+                suggestions.append(prompt)
+            }
+        }
+
+        // Fill remaining slots with defaults
+        let defaults: [(text: String, icon: String)] = [
+            ("I keep slicing my driver", "arrow.turn.up.right"),
+            ("30-minute practice plan", "clock"),
+            ("I'm hitting fat shots", "arrow.down.to.line"),
+            ("Help with my short game", "flag"),
+        ]
+        for d in defaults where suggestions.count < 4 {
+            if !suggestions.contains(where: { $0.text == d.text }) {
+                suggestions.append(d)
+            }
+        }
+
+        return Array(suggestions.prefix(4))
+    }
+
+    private func isLastMessageInGroup(at index: Int, in messages: [ChatMessage]) -> Bool {
+        guard index < messages.count - 1 else { return true }
+        return messages[index].role != messages[index + 1].role
+    }
+
+    private func shouldShowTimestamp(at index: Int, in messages: [ChatMessage]) -> Bool {
+        guard index > 0 else { return true }
+        let gap = messages[index].timestamp.timeIntervalSince(messages[index - 1].timestamp)
+        return gap > 300 // Show timestamp if 5+ minutes between messages
     }
 }
 
@@ -212,7 +288,7 @@ struct SettingsSheet: View {
 
                 Section("Swing Memory") {
                     if memoryManager.swingProfile.isEmpty {
-                        Text("Chat with your coach to build your swing profile.")
+                        Text("Chat with Caddie to build your swing profile.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {

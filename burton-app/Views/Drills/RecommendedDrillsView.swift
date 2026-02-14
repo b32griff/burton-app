@@ -29,12 +29,12 @@ struct RecommendedDrillsView: View {
 
             Image(systemName: "list.bullet.clipboard")
                 .font(.system(size: 50))
-                .foregroundStyle(.golfGreen)
+                .foregroundStyle(.appAccent)
 
             Text("No Drills Yet")
                 .font(.title3.bold())
 
-            Text("Chat with your coach or upload a swing video. Personalized drills will appear here based on what the AI sees in your swing.")
+            Text("Chat with Caddie or upload a swing video. Personalized drills will appear here based on what the AI sees in your swing.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -142,7 +142,7 @@ struct RecommendedDrillsView: View {
 struct DrillCard: View {
     let drill: Drill
     let reason: String
-    var priorityColor: Color = .golfGreen
+    var priorityColor: Color = .appAccent
 
     var body: some View {
         HStack(spacing: 0) {
@@ -172,7 +172,7 @@ struct DrillCard: View {
                 HStack(spacing: 16) {
                     Label("\(drill.durationMinutes) min", systemImage: "clock")
                     Label(drill.difficulty.rawValue, systemImage: "star")
-                    Label(drill.equipment.first ?? "None", systemImage: "sportscourt")
+                    Label(drill.equipment.joined(separator: ", "), systemImage: "sportscourt")
                 }
                 .font(.caption)
                 .foregroundStyle(.tertiary)

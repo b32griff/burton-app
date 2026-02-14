@@ -47,6 +47,14 @@ class AppState {
     }
 
     func deleteConversation(id: UUID) {
+        // Clean up thumbnail files for this conversation
+        if let conversation = conversations.first(where: { $0.id == id }) {
+            for message in conversation.messages {
+                for path in message.imageReferences {
+                    try? FileManager.default.removeItem(atPath: path)
+                }
+            }
+        }
         conversations.removeAll { $0.id == id }
         saveConversations()
     }
@@ -61,6 +69,16 @@ class AppState {
     // MARK: - Reset
 
     func resetOnboarding() {
+        // Clean up thumbnail files
+        let thumbnailDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("thumbnails", isDirectory: true)
+        try? FileManager.default.removeItem(at: thumbnailDir)
+
+        // Clean up debug logs
+        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.removeItem(at: docsDir.appendingPathComponent("chat_debug.log"))
+        try? FileManager.default.removeItem(at: docsDir.appendingPathComponent("swing_memory_debug.log"))
+
         UserDefaultsManager.resetAll()
         userProfile = .empty
         conversations = []

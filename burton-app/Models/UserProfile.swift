@@ -67,4 +67,21 @@ struct UserProfile: Codable {
         goals: [],
         hasCompletedOnboarding: false
     )
+
+    init(name: String, handicap: Double? = nil, skillLevel: SkillLevel = .beginner, goals: [ImprovementGoal] = [], hasCompletedOnboarding: Bool = false) {
+        self.name = name
+        self.handicap = handicap
+        self.skillLevel = skillLevel
+        self.goals = goals
+        self.hasCompletedOnboarding = hasCompletedOnboarding
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        handicap = try container.decodeIfPresent(Double.self, forKey: .handicap)
+        skillLevel = try container.decodeIfPresent(SkillLevel.self, forKey: .skillLevel) ?? .beginner
+        goals = try container.decodeIfPresent([ImprovementGoal].self, forKey: .goals) ?? []
+        hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
+    }
 }

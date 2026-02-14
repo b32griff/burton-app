@@ -7,16 +7,14 @@ struct WelcomeStepView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "figure.golf")
-                .font(.system(size: 80))
-                .foregroundStyle(.white)
+            CaddieLogoView(size: 120, style: .glyph)
 
-            Text("Welcome to\nSwing Coach")
+            Text("Welcome to\nCaddie AI")
                 .font(.largeTitle.bold())
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
 
-            Text("Your personal AI swing coach. Chat about your game, get tailored advice, and track your improvement over time.")
+            Text("Your personal AI caddie. Chat about your game, get tailored advice, and track your improvement over time.")
                 .font(.body)
                 .foregroundStyle(.white.opacity(0.9))
                 .multilineTextAlignment(.center)
@@ -34,7 +32,7 @@ struct WelcomeStepView: View {
                 } label: {
                     Text("Get Started")
                         .font(.headline)
-                        .foregroundStyle(.golfGreen)
+                        .foregroundStyle(.appAccent)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(.white, in: RoundedRectangle(cornerRadius: 14))

@@ -10,6 +10,13 @@ struct ProgressNote: Codable, Identifiable {
         self.date = date
         self.note = note
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try container.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
 }
 
 struct PrioritizedIssue: Codable, Identifiable {
@@ -21,6 +28,13 @@ struct PrioritizedIssue: Codable, Identifiable {
         self.id = id
         self.name = name
         self.priority = priority
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        priority = try container.decodeIfPresent(IssuePriority.self, forKey: .priority) ?? .medium
     }
 
     enum IssuePriority: String, Codable, CaseIterable {
@@ -50,6 +64,14 @@ struct RecommendedDrill: Codable, Identifiable {
         self.reason = reason
         self.priority = priority
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        drillID = try container.decodeIfPresent(String.self, forKey: .drillID) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+        priority = try container.decodeIfPresent(PrioritizedIssue.IssuePriority.self, forKey: .priority) ?? .medium
+    }
 }
 
 struct SwingProfile: Codable {
@@ -73,5 +95,26 @@ struct SwingProfile: Codable {
 
     var isEmpty: Bool {
         summary.isEmpty && identifiedIssues.isEmpty && prioritizedIssues.isEmpty && strengths.isEmpty && currentFocusAreas.isEmpty
+    }
+
+    init(summary: String = "", identifiedIssues: [String] = [], prioritizedIssues: [PrioritizedIssue] = [], recommendedDrills: [RecommendedDrill] = [], strengths: [String] = [], currentFocusAreas: [String] = [], progressNotes: [ProgressNote] = []) {
+        self.summary = summary
+        self.identifiedIssues = identifiedIssues
+        self.prioritizedIssues = prioritizedIssues
+        self.recommendedDrills = recommendedDrills
+        self.strengths = strengths
+        self.currentFocusAreas = currentFocusAreas
+        self.progressNotes = progressNotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        identifiedIssues = try container.decodeIfPresent([String].self, forKey: .identifiedIssues) ?? []
+        prioritizedIssues = try container.decodeIfPresent([PrioritizedIssue].self, forKey: .prioritizedIssues) ?? []
+        recommendedDrills = try container.decodeIfPresent([RecommendedDrill].self, forKey: .recommendedDrills) ?? []
+        strengths = try container.decodeIfPresent([String].self, forKey: .strengths) ?? []
+        currentFocusAreas = try container.decodeIfPresent([String].self, forKey: .currentFocusAreas) ?? []
+        progressNotes = try container.decodeIfPresent([ProgressNote].self, forKey: .progressNotes) ?? []
     }
 }

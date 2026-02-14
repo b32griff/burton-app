@@ -6,6 +6,7 @@ class ChatViewModel {
     var currentConversation: Conversation
     var inputText = ""
     var isStreaming = false
+    var isAnalyzingVideo = false
     var showVideoPicker = false
     var errorMessage: String?
 
@@ -14,8 +15,11 @@ class ChatViewModel {
     var stagedThumbnailPath: String?
 
     private var streamTask: Task<Void, Never>?
+    private var streamGeneration = 0 // prevents old tasks from resetting isStreaming
+    private var streamWatchdog: Task<Void, Never>?
     private var appState: AppState?
     private var memoryManager: SwingMemoryManager?
+    private var hasConfigured = false
 
     init(conversation: Conversation? = nil) {
         self.currentConversation = conversation ?? Conversation()
@@ -24,18 +28,34 @@ class ChatViewModel {
     func configure(appState: AppState, memoryManager: SwingMemoryManager) {
         self.appState = appState
         self.memoryManager = memoryManager
+
+        guard !hasConfigured else { return }
+        hasConfigured = true
+
         cleanupEmptyMessages()
+        // Reset stuck streaming state from previous session
+        if isStreaming {
+            isStreaming = false
+            streamTask?.cancel()
+            streamTask = nil
+        }
     }
 
     // MARK: - Send Message
 
     func sendMessage() {
+        chatLog("sendMessage: text='\(inputText.prefix(50))' isStreaming=\(isStreaming) hasVideo=\(stagedVideoURL != nil)")
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasVideo = stagedVideoURL != nil
-        guard !text.isEmpty || hasVideo else { return }
+        guard !text.isEmpty || hasVideo else {
+            chatLog("sendMessage: guard failed — empty text and no video")
+            return
+        }
 
         // Safety: if streaming got stuck, force-reset it
         if isStreaming {
+            chatLog("sendMessage: force-resetting stuck stream")
+            cancelWatchdog()
             streamTask?.cancel()
             streamTask = nil
             isStreaming = false
@@ -61,7 +81,10 @@ class ChatViewModel {
         let assistantMessage = ChatMessage(role: .assistant, content: "")
         currentConversation.messages.append(assistantMessage)
 
+        streamGeneration += 1
+        let myGeneration = streamGeneration
         isStreaming = true
+        startStreamWatchdog(generation: myGeneration)
 
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -74,19 +97,24 @@ class ChatViewModel {
 
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
-                    messages: apiMessages
+                    messages: apiMessages,
+                    maxTokens: 4096
                 )
 
                 for try await chunk in stream {
                     if Task.isCancelled { break }
                     await MainActor.run {
                         let lastIndex = self.currentConversation.messages.count - 1
-                        self.currentConversation.messages[lastIndex].content += chunk
+                        if lastIndex >= 0 {
+                            self.currentConversation.messages[lastIndex].content += chunk
+                        }
                     }
                 }
             } catch {
                 failed = true
                 await MainActor.run {
+                    // Only touch state if we're still the active stream
+                    guard self.streamGeneration == myGeneration else { return }
                     if let last = self.currentConversation.messages.last, last.content.isEmpty {
                         self.currentConversation.messages.removeLast()
                     }
@@ -94,8 +122,10 @@ class ChatViewModel {
                 }
             }
 
-            // Always runs — guaranteed to reset isStreaming
+            // Only reset isStreaming if we're still the active stream
             await MainActor.run {
+                guard self.streamGeneration == myGeneration else { return }
+                self.cancelWatchdog()
                 self.isStreaming = false
                 self.persistConversation()
                 if !failed {
@@ -117,6 +147,9 @@ class ChatViewModel {
         if let url = stagedVideoURL {
             try? FileManager.default.removeItem(at: url)
         }
+        if let path = stagedThumbnailPath {
+            try? FileManager.default.removeItem(atPath: path)
+        }
         stagedVideoURL = nil
         stagedThumbnailPath = nil
     }
@@ -125,7 +158,11 @@ class ChatViewModel {
 
     private func sendVideoWithMessage(url: URL, text: String, thumbnailPath: String?) {
         errorMessage = nil
+        streamGeneration += 1
+        let myGeneration = streamGeneration
         isStreaming = true
+        startStreamWatchdog(generation: myGeneration)
+        chatLog("Video send started (gen \(myGeneration))")
 
         let userMessage = ChatMessage(
             role: .user,
@@ -144,21 +181,40 @@ class ChatViewModel {
             var failed = false
 
             do {
+                await MainActor.run { self.isAnalyzingVideo = true }
+                self.chatLog("Extracting frames...")
                 let frames = try await VideoFrameExtractor.extractKeyFrames(from: url)
+                self.chatLog("Got \(frames.count) frames, sizes: \(frames.map(\.count))")
 
                 guard !frames.isEmpty else {
                     await MainActor.run {
+                        guard self.streamGeneration == myGeneration else { return }
                         self.currentConversation.messages.removeLast()
                         self.errorMessage = "Could not extract frames from video."
                     }
                     failed = true
-                    // Fall through to cleanup below
                     throw ClaudeAPIService.APIError.parseError
                 }
 
-                // Build image content blocks for the API message
+                // Label each frame with its swing phase
+                let phaseLabels: [String]
+                switch frames.count {
+                case 8:
+                    phaseLabels = ["Setup/Address", "Early Takeaway", "Top of Backswing", "Early Downswing", "Impact Zone", "Early Follow-through", "Late Follow-through", "Finish"]
+                case 6:
+                    phaseLabels = ["Setup/Address", "Backswing", "Top of Backswing", "Downswing", "Impact", "Finish"]
+                default:
+                    phaseLabels = (0..<frames.count).map { "Frame \($0 + 1) of \(frames.count)" }
+                }
+
+                // Build content blocks with labels interleaved
                 var contentBlocks: [[String: Any]] = []
-                for frameData in frames {
+                for (i, frameData) in frames.enumerated() {
+                    let label = i < phaseLabels.count ? phaseLabels[i] : "Frame \(i + 1)"
+                    contentBlocks.append([
+                        "type": "text",
+                        "text": "[\(label)]"
+                    ])
                     let base64 = frameData.base64EncodedString()
                     contentBlocks.append([
                         "type": "image",
@@ -171,31 +227,52 @@ class ChatViewModel {
                 }
                 contentBlocks.append([
                     "type": "text",
-                    "text": "\(text)\n\nThese images are sequential frames from one continuous golf swing video, from setup through finish. Analyze this swing fresh — describe what you actually see in each phase before diagnosing. Follow your full analysis protocol."
+                    "text": "\(text)\n\nThese labeled images show one continuous golf swing. Look carefully at the actual body positions in each phase. Describe what you see, then give your analysis."
                 ])
 
                 let systemPrompt = self.buildSystemPrompt(videoMode: true)
-                let messages: [[String: Any]] = [
-                    ["role": "user", "content": contentBlocks]
-                ]
 
+                // Include prior conversation messages for context (text-only, truncated)
+                let priorMessages = Array(self.currentConversation.messages.dropLast(2))
+                var apiMessages: [[String: Any]] = []
+                var contextChars = 0
+                let maxContextChars = 2000
+                for msg in priorMessages {
+                    guard !msg.content.isEmpty else { continue }
+                    let content = String(msg.content.prefix(500))
+                    if contextChars + content.count > maxContextChars { break }
+                    apiMessages.append(["role": msg.role.rawValue, "content": content])
+                    contextChars += content.count
+                }
+                apiMessages.append(["role": "user", "content": contentBlocks])
+                let messages = apiMessages
+
+                await MainActor.run { self.isAnalyzingVideo = false }
+                self.chatLog("Sending to API...")
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
                     messages: messages,
                     maxTokens: 4096
                 )
 
+                var chunkCount = 0
                 for try await chunk in stream {
                     if Task.isCancelled { break }
+                    chunkCount += 1
                     await MainActor.run {
                         let lastIndex = self.currentConversation.messages.count - 1
-                        self.currentConversation.messages[lastIndex].content += chunk
+                        if lastIndex >= 0 {
+                            self.currentConversation.messages[lastIndex].content += chunk
+                        }
                     }
                 }
+                self.chatLog("Stream finished: \(chunkCount) chunks received")
             } catch {
+                self.chatLog("Video stream ERROR: \(error.localizedDescription)")
                 if !failed {
                     failed = true
                     await MainActor.run {
+                        guard self.streamGeneration == myGeneration else { return }
                         if let last = self.currentConversation.messages.last, last.content.isEmpty {
                             self.currentConversation.messages.removeLast()
                         }
@@ -204,9 +281,13 @@ class ChatViewModel {
                 }
             }
 
-            // Always runs — guaranteed to reset isStreaming and clean up
+            // Only reset if we're still the active stream
             await MainActor.run {
+                guard self.streamGeneration == myGeneration else { return }
+                self.cancelWatchdog()
+                self.chatLog("Cleanup: isStreaming -> false (gen \(myGeneration), failed: \(failed))")
                 self.isStreaming = false
+                self.isAnalyzingVideo = false
                 self.persistConversation()
                 if !failed {
                     self.triggerProfileUpdateIfNeeded(hasVideo: true)
@@ -219,9 +300,12 @@ class ChatViewModel {
     // MARK: - Stop Streaming
 
     func stopStreaming() {
+        cancelWatchdog()
         streamTask?.cancel()
         streamTask = nil
         isStreaming = false
+        isAnalyzingVideo = false
+        cleanupEmptyMessages()
         persistConversation()
     }
 
@@ -335,6 +419,45 @@ class ChatViewModel {
             return fileURL.path
         } catch {
             return nil
+        }
+    }
+
+    private func startStreamWatchdog(generation: Int) {
+        streamWatchdog?.cancel()
+        streamWatchdog = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(90))
+            guard let self, !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self.streamGeneration == generation, self.isStreaming else { return }
+                self.chatLog("Watchdog: isStreaming stuck for 90s, force-resetting (gen \(generation))")
+                self.streamTask?.cancel()
+                self.streamTask = nil
+                self.isStreaming = false
+                self.persistConversation()
+            }
+        }
+    }
+
+    private func cancelWatchdog() {
+        streamWatchdog?.cancel()
+        streamWatchdog = nil
+    }
+
+    private func chatLog(_ message: String) {
+        let logFile = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("chat_debug.log")
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: logFile.path) {
+                if let handle = try? FileHandle(forWritingTo: logFile) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: logFile)
+            }
         }
     }
 

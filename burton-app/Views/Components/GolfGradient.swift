@@ -1,9 +1,9 @@
 import SwiftUI
 
-struct GolfGradient: View {
+struct AppGradient: View {
     var body: some View {
         LinearGradient(
-            colors: [.golfGreen, .darkFairway],
+            colors: [.appAccent, .appAccentDark],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )

@@ -41,40 +41,51 @@ struct ChatInputBar: View {
                 .padding(.bottom, 4)
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 8) {
                 Button(action: onVideoTap) {
-                    Image(systemName: "video.fill")
-                        .font(.title3)
-                        .foregroundStyle(.golfGreen)
+                    Image(systemName: "video")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
                 .disabled(isStreaming)
 
-                TextField("Ask your coach...", text: $text, axis: .vertical)
-                    .lineLimit(1...5)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 20))
+                HStack(alignment: .bottom, spacing: 4) {
+                    TextField("Ask Caddie...", text: $text, axis: .vertical)
+                        .lineLimit(1...5)
+                        .textFieldStyle(.plain)
+                        .padding(.leading, 12)
+                        .padding(.vertical, 8)
 
-                if isStreaming && !canSend {
-                    // Only show stop button when streaming AND user hasn't typed anything
-                    Button(action: onStop) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.red)
-                    }
-                } else {
-                    // Show send button when user has text (even during streaming)
-                    Button(action: onSend) {
+                    if isStreaming {
+                        Button(action: onStop) {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.red)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                    } else if canSend {
+                        Button(action: onSend) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.appAccent)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                    } else {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(canSend ? .golfGreen : .gray)
+                            .font(.system(size: 26))
+                            .foregroundStyle(Color(.systemGray4))
+                            .frame(width: 36, height: 36)
                     }
-                    .disabled(!canSend)
                 }
+                .padding(.trailing, 4)
+                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 22))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
         .background(.bar)
     }

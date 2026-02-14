@@ -24,4 +24,14 @@ struct Conversation: Identifiable, Codable, Hashable {
         self.updatedAt = updatedAt
         self.summary = summary
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "New Conversation"
+        messages = try container.decodeIfPresent([ChatMessage].self, forKey: .messages) ?? []
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+    }
 }

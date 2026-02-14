@@ -27,9 +27,9 @@ struct ClaudeAPIService {
                         maxTokens: maxTokens
                     )
 
-                    // Fresh session per stream to avoid stale HTTP/2 connections
+                    // Fresh session per stream
                     let config = URLSessionConfiguration.default
-                    config.timeoutIntervalForRequest = 120
+                    config.timeoutIntervalForRequest = 30
                     config.timeoutIntervalForResource = 300
                     let session = URLSession(configuration: config)
 
@@ -54,8 +54,10 @@ struct ClaudeAPIService {
                             guard line.hasPrefix("data: ") else { continue }
                             let jsonString = String(line.dropFirst(6))
 
-                            guard jsonString != "[DONE]",
-                                  let data = jsonString.data(using: .utf8),
+                            // [DONE] signals end of stream
+                            if jsonString == "[DONE]" { break }
+
+                            guard let data = jsonString.data(using: .utf8),
                                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                                   let type = json["type"] as? String
                             else { continue }
@@ -67,7 +69,13 @@ struct ClaudeAPIService {
                                 continuation.yield(text)
                             }
 
-                            if type == "message_stop" {
+                            // Any of these signal the stream is done
+                            if type == "message_stop" { break }
+                            if type == "content_block_stop" && receivedContent { break }
+
+                            if type == "message_delta",
+                               let delta = json["delta"] as? [String: Any],
+                               let _ = delta["stop_reason"] as? String {
                                 break
                             }
 
@@ -78,16 +86,20 @@ struct ClaudeAPIService {
                             }
                         }
                     } catch let urlError as URLError where urlError.code == .cancelled && receivedContent {
-                        // Connection closed after content was received — this is normal, not an error
+                        // Connection closed after content was received — normal
+                    } catch let urlError as URLError where urlError.code == .timedOut && receivedContent {
+                        // Idle timeout after content was delivered — stream is done
                     }
 
+                    session.invalidateAndCancel()
                     continuation.finish()
                 } catch let urlError as URLError where urlError.code == .cancelled && receivedContent {
-                    // Stream ended after content was delivered — treat as success
+                    continuation.finish()
+                } catch let urlError as URLError where urlError.code == .timedOut && receivedContent {
+                    // Idle timeout after content was delivered — treat as success
                     continuation.finish()
                 } catch {
                     if receivedContent {
-                        // Got content but connection dropped — still a success
                         continuation.finish()
                     } else {
                         continuation.finish(throwing: error)
