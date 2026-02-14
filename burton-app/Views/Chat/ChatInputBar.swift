@@ -2,18 +2,23 @@ import SwiftUI
 
 struct ChatInputBar: View {
     @Binding var text: String
+    @Binding var clubType: ClubType
+    @Binding var cameraAngle: CameraAngle
     var isStreaming: Bool
     var stagedThumbnailPath: String?
     var onSend: () -> Void
     var onStop: () -> Void
-    var onVideoTap: () -> Void
+    var onRecordVideo: () -> Void
+    var onChooseFromLibrary: () -> Void
     var onClearVideo: () -> Void
+
+    @State private var showOptions = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Staged video thumbnail preview
+            // Staged video thumbnail + club picker
             if let path = stagedThumbnailPath, let uiImage = UIImage(contentsOfFile: path) {
-                HStack {
+                HStack(spacing: 12) {
                     ZStack(alignment: .topTrailing) {
                         Image(uiImage: uiImage)
                             .resizable()
@@ -34,6 +39,62 @@ struct ChatInputBar: View {
                         }
                         .offset(x: 6, y: -6)
                     }
+
+                    // Club type + camera angle pickers
+                    VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Club")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 6) {
+                                ForEach([ClubType.driver, .iron, .wedge], id: \.self) { club in
+                                    Button {
+                                        clubType = club
+                                    } label: {
+                                        Text(club.rawValue)
+                                            .font(.caption.weight(clubType == club ? .semibold : .regular))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                clubType == club
+                                                    ? Color(red: 0, green: 0.478, blue: 1.0)
+                                                    : Color(.systemGray5),
+                                                in: Capsule()
+                                            )
+                                            .foregroundStyle(clubType == club ? .white : .primary)
+                                    }
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Angle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 6) {
+                                ForEach(CameraAngle.allCases) { angle in
+                                    Button {
+                                        cameraAngle = angle
+                                    } label: {
+                                        Text(angle.shortLabel)
+                                            .font(.caption.weight(cameraAngle == angle ? .semibold : .regular))
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                cameraAngle == angle
+                                                    ? Color(red: 0, green: 0.478, blue: 1.0)
+                                                    : Color(.systemGray5),
+                                                in: Capsule()
+                                            )
+                                            .foregroundStyle(cameraAngle == angle ? .white : .primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Spacer()
                 }
                 .padding(.horizontal, 16)
@@ -41,51 +102,102 @@ struct ChatInputBar: View {
                 .padding(.bottom, 4)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                Button(action: onVideoTap) {
-                    Image(systemName: "video")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                }
-                .disabled(isStreaming)
-
-                HStack(alignment: .bottom, spacing: 4) {
-                    TextField("Ask Caddie...", text: $text, axis: .vertical)
-                        .lineLimit(1...5)
-                        .textFieldStyle(.plain)
-                        .padding(.leading, 12)
-                        .padding(.vertical, 8)
-
-                    if isStreaming {
-                        Button(action: onStop) {
-                            Image(systemName: "stop.circle.fill")
-                                .font(.system(size: 26))
-                                .foregroundStyle(.red)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
+            ZStack(alignment: .bottomLeading) {
+                // Options bubble
+                if showOptions {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Button {
+                            withAnimation(.spring(duration: 0.2)) { showOptions = false }
+                            onRecordVideo()
+                        } label: {
+                            Label("Record", systemImage: "video.fill")
+                                .font(.subheadline)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
                         }
-                    } else if canSend {
-                        Button(action: onSend) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 26))
-                                .foregroundStyle(.appAccent)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+
+                        Divider().padding(.leading, 14)
+
+                        Button {
+                            withAnimation(.spring(duration: 0.2)) { showOptions = false }
+                            onChooseFromLibrary()
+                        } label: {
+                            Label("Library", systemImage: "photo")
+                                .font(.subheadline)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
                         }
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 26))
-                            .foregroundStyle(Color(.systemGray4))
-                            .frame(width: 36, height: 36)
+                        .buttonStyle(.plain)
                     }
+                    .padding(4)
+                    .fixedSize()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThickMaterial)
+                            .shadow(color: .black.opacity(0.15), radius: 16, y: 6)
+                            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+                    )
+                    .padding(.leading, 10)
+                    .padding(.bottom, 54)
+                    .transition(.scale(scale: 0.5, anchor: .bottomLeading).combined(with: .opacity))
                 }
-                .padding(.trailing, 4)
-                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 22))
+
+                // Input bar
+                HStack(alignment: .bottom, spacing: 8) {
+                    // + button (iMessage style)
+                    Button {
+                        withAnimation(.spring(duration: 0.25)) {
+                            showOptions.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 30))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(showOptions ? .appAccent : .secondary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+
+                    // Text field capsule with inline send button
+                    HStack(alignment: .bottom, spacing: 4) {
+                        TextField("Message", text: $text, axis: .vertical)
+                            .lineLimit(1...5)
+                            .textFieldStyle(.plain)
+                            .padding(.leading, 12)
+                            .padding(.vertical, 8)
+                            .onTapGesture {
+                                if showOptions {
+                                    withAnimation(.spring(duration: 0.2)) {
+                                        showOptions = false
+                                    }
+                                }
+                            }
+
+                        if isStreaming && stagedThumbnailPath == nil {
+                            Button(action: onStop) {
+                                Image(systemName: "stop.circle.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(.red)
+                                    .frame(width: 36, height: 36)
+                                    .contentShape(Rectangle())
+                            }
+                        } else if canSend {
+                            Button(action: onSend) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(Color(red: 0, green: 0.478, blue: 1.0))
+                                    .frame(width: 36, height: 36)
+                                    .contentShape(Rectangle())
+                            }
+                        }
+                    }
+                    .padding(.trailing, 4)
+                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 22))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
         }
         .background(.bar)
     }
