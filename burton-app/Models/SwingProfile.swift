@@ -19,6 +19,31 @@ struct ProgressNote: Codable, Identifiable {
     }
 }
 
+struct SessionRecord: Codable, Identifiable {
+    let id: UUID
+    let date: Date
+    let rootCause: String
+    let assignedDrill: String
+    let overallScore: Int // 1-10
+
+    init(id: UUID = UUID(), date: Date = Date(), rootCause: String, assignedDrill: String, overallScore: Int) {
+        self.id = id
+        self.date = date
+        self.rootCause = rootCause
+        self.assignedDrill = assignedDrill
+        self.overallScore = overallScore
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        date = try container.decodeIfPresent(Date.self, forKey: .date) ?? Date()
+        rootCause = try container.decodeIfPresent(String.self, forKey: .rootCause) ?? ""
+        assignedDrill = try container.decodeIfPresent(String.self, forKey: .assignedDrill) ?? ""
+        overallScore = try container.decodeIfPresent(Int.self, forKey: .overallScore) ?? 5
+    }
+}
+
 struct PrioritizedIssue: Codable, Identifiable {
     let id: UUID
     let name: String
@@ -82,6 +107,7 @@ struct SwingProfile: Codable {
     var strengths: [String]
     var currentFocusAreas: [String]
     var progressNotes: [ProgressNote]
+    var sessionHistory: [SessionRecord]
 
     static let empty = SwingProfile(
         summary: "",
@@ -90,14 +116,15 @@ struct SwingProfile: Codable {
         recommendedDrills: [],
         strengths: [],
         currentFocusAreas: [],
-        progressNotes: []
+        progressNotes: [],
+        sessionHistory: []
     )
 
     var isEmpty: Bool {
         summary.isEmpty && identifiedIssues.isEmpty && prioritizedIssues.isEmpty && strengths.isEmpty && currentFocusAreas.isEmpty
     }
 
-    init(summary: String = "", identifiedIssues: [String] = [], prioritizedIssues: [PrioritizedIssue] = [], recommendedDrills: [RecommendedDrill] = [], strengths: [String] = [], currentFocusAreas: [String] = [], progressNotes: [ProgressNote] = []) {
+    init(summary: String = "", identifiedIssues: [String] = [], prioritizedIssues: [PrioritizedIssue] = [], recommendedDrills: [RecommendedDrill] = [], strengths: [String] = [], currentFocusAreas: [String] = [], progressNotes: [ProgressNote] = [], sessionHistory: [SessionRecord] = []) {
         self.summary = summary
         self.identifiedIssues = identifiedIssues
         self.prioritizedIssues = prioritizedIssues
@@ -105,6 +132,7 @@ struct SwingProfile: Codable {
         self.strengths = strengths
         self.currentFocusAreas = currentFocusAreas
         self.progressNotes = progressNotes
+        self.sessionHistory = sessionHistory
     }
 
     init(from decoder: Decoder) throws {
@@ -116,5 +144,6 @@ struct SwingProfile: Codable {
         strengths = try container.decodeIfPresent([String].self, forKey: .strengths) ?? []
         currentFocusAreas = try container.decodeIfPresent([String].self, forKey: .currentFocusAreas) ?? []
         progressNotes = try container.decodeIfPresent([ProgressNote].self, forKey: .progressNotes) ?? []
+        sessionHistory = try container.decodeIfPresent([SessionRecord].self, forKey: .sessionHistory) ?? []
     }
 }

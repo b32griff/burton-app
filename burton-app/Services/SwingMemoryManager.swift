@@ -35,6 +35,14 @@ class SwingMemoryManager {
             parts.append("Recent progress: " + recent.map { "[\($0.date.shortFormatted)] \($0.note)" }.joined(separator: "; "))
         }
 
+        let recentSessions = swingProfile.sessionHistory.suffix(5)
+        if !recentSessions.isEmpty {
+            let sessionLines = recentSessions.map { record in
+                "- [\(record.date.shortFormatted)] Root cause: '\(record.rootCause)'. Drill: '\(record.assignedDrill)'. Score: \(record.overallScore)/10."
+            }
+            parts.append("Session history:\n" + sessionLines.joined(separator: "\n"))
+        }
+
         return parts.joined(separator: "\n")
     }
 
@@ -80,6 +88,11 @@ class SwingMemoryManager {
 
         Recommend 3-6 drills total. Prioritize drills that directly address the user's biggest issues.
 
+        For "sessionRecord", summarize THIS session as a single coaching record:
+        - "rootCause": The PRIMARY swing fault or issue discussed (one phrase, e.g. "early extension", "weak grip", "over-the-top path"). Pick the most important one.
+        - "assignedDrill": The name of the PRIMARY drill you recommended. Use the drill name, not ID.
+        - "overallScore": Rate the golfer's current overall swing quality 1-10. 1 = severe issues, 5 = average amateur, 7 = solid ball striker, 10 = tour quality.
+
         \(hasVideo ? "This conversation includes VIDEO ANALYSIS. You can add, change, or REMOVE drills and issues based on what you see. If the user has fixed a previous issue, remove it and its drills." : "This is a TEXT-ONLY conversation. You may ADD new drills and issues, but keep all existing recommendedDrills from the current profile — do NOT remove any existing drills unless the user explicitly says they've fixed the issue.")
 
         Respond with ONLY valid JSON (no markdown, no explanation):
@@ -90,7 +103,8 @@ class SwingMemoryManager {
             "recommendedDrills": [{"drillID": "drill_id", "reason": "Why this helps you specifically", "priority": "high"}],
             "strengths": ["strength1"],
             "currentFocusAreas": ["focus1"],
-            "progressNotes": [{"note": "Session summary"}]
+            "progressNotes": [{"note": "Session summary"}],
+            "sessionRecord": {"rootCause": "primary fault", "assignedDrill": "drill name", "overallScore": 7}
         }
         """
 
@@ -185,6 +199,26 @@ class SwingMemoryManager {
                         if let noteText = noteDict["note"] as? String {
                             swingProfile.progressNotes.append(ProgressNote(note: noteText))
                         }
+                    }
+                }
+
+                // Parse session record and append to history
+                if let record = json["sessionRecord"] as? [String: Any] {
+                    let rootCause = record["rootCause"] as? String ?? ""
+                    let assignedDrill = record["assignedDrill"] as? String ?? ""
+                    let overallScore = (record["overallScore"] as? Int) ?? (Int(record["overallScore"] as? String ?? "") ?? 5)
+
+                    if !rootCause.isEmpty {
+                        let sessionRecord = SessionRecord(
+                            rootCause: rootCause,
+                            assignedDrill: assignedDrill,
+                            overallScore: overallScore
+                        )
+                        swingProfile.sessionHistory.append(sessionRecord)
+                        if swingProfile.sessionHistory.count > 10 {
+                            swingProfile.sessionHistory = Array(swingProfile.sessionHistory.suffix(10))
+                        }
+                        debugLog("Added session record: root=\(rootCause), drill=\(assignedDrill), score=\(overallScore)")
                     }
                 }
 
