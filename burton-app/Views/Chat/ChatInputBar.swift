@@ -32,11 +32,12 @@ struct ChatInputBar: View {
                                     .shadow(radius: 2)
                             )
 
-                        Button(action: onClearVideo) {
+                        Button { Haptics.light(); onClearVideo() } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 20))
                                 .foregroundStyle(.white, .black.opacity(0.6))
                         }
+                        .buttonStyle(.plain)
                         .offset(x: 6, y: -6)
                     }
 
@@ -50,6 +51,7 @@ struct ChatInputBar: View {
                             HStack(spacing: 6) {
                                 ForEach([ClubType.driver, .iron, .wedge], id: \.self) { club in
                                     Button {
+                                        Haptics.selection()
                                         clubType = club
                                     } label: {
                                         Text(club.rawValue)
@@ -76,6 +78,7 @@ struct ChatInputBar: View {
                             HStack(spacing: 6) {
                                 ForEach(CameraAngle.allCases) { angle in
                                     Button {
+                                        Haptics.selection()
                                         cameraAngle = angle
                                     } label: {
                                         Text(angle.shortLabel)
@@ -107,6 +110,7 @@ struct ChatInputBar: View {
                 if showOptions {
                     VStack(alignment: .leading, spacing: 2) {
                         Button {
+                            Haptics.light()
                             withAnimation(.spring(duration: 0.2)) { showOptions = false }
                             onRecordVideo()
                         } label: {
@@ -120,6 +124,7 @@ struct ChatInputBar: View {
                         Divider().padding(.leading, 14)
 
                         Button {
+                            Haptics.light()
                             withAnimation(.spring(duration: 0.2)) { showOptions = false }
                             onChooseFromLibrary()
                         } label: {
@@ -147,6 +152,7 @@ struct ChatInputBar: View {
                 HStack(alignment: .bottom, spacing: 8) {
                     // + button (iMessage style)
                     Button {
+                        Haptics.soft()
                         withAnimation(.spring(duration: 0.25)) {
                             showOptions.toggle()
                         }
@@ -158,6 +164,7 @@ struct ChatInputBar: View {
                             .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
 
                     // Text field capsule with inline send button
                     HStack(alignment: .bottom, spacing: 4) {
@@ -175,21 +182,23 @@ struct ChatInputBar: View {
                             }
 
                         if isStreaming && stagedThumbnailPath == nil {
-                            Button(action: onStop) {
+                            Button { Haptics.medium(); onStop() } label: {
                                 Image(systemName: "stop.circle.fill")
                                     .font(.system(size: 26))
                                     .foregroundStyle(.red)
                                     .frame(width: 36, height: 36)
                                     .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         } else if canSend {
-                            Button(action: onSend) {
+                            Button { Haptics.light(); onSend() } label: {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .font(.system(size: 26))
                                     .foregroundStyle(Color(red: 0, green: 0.478, blue: 1.0))
                                     .frame(width: 36, height: 36)
                                     .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.trailing, 4)

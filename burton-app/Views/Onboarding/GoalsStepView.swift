@@ -27,6 +27,7 @@ struct GoalsStepView: View {
                 ForEach(ImprovementGoal.allCases) { goal in
                     let isSelected = viewModel.selectedGoals.contains(goal)
                     Button {
+                        Haptics.selection()
                         viewModel.toggleGoal(goal)
                     } label: {
                         VStack(spacing: 8) {
@@ -61,6 +62,7 @@ struct GoalsStepView: View {
 
             HStack(spacing: 16) {
                 Button {
+                    Haptics.light()
                     viewModel.previousStep()
                 } label: {
                     Text("Back")
@@ -72,6 +74,7 @@ struct GoalsStepView: View {
                 }
 
                 Button {
+                    Haptics.medium()
                     onComplete()
                 } label: {
                     Text("Let's Go!")
@@ -81,6 +84,7 @@ struct GoalsStepView: View {
                         .padding()
                         .background(.white, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(.plain)
                 .disabled(!viewModel.canProceed)
                 .opacity(viewModel.canProceed ? 1.0 : 0.6)
             }

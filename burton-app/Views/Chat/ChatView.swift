@@ -7,14 +7,17 @@ enum ChatSheet: Identifiable {
 
 extension Notification.Name {
     static let startNewConversation = Notification.Name("startNewConversation")
+    static let loadConversation = Notification.Name("loadConversation")
 }
 
 struct ChatView: View {
     @Environment(AppState.self) private var appState
     @Environment(SwingMemoryManager.self) private var memoryManager
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @State private var viewModel = ChatViewModel()
     @State private var activeSheet: ChatSheet?
-    @State private var showVideoOptions = false
+    @State private var showPaywall = false
+    @Binding var showHistory: Bool
 
     var initialConversation: Conversation?
 
@@ -35,6 +38,7 @@ struct ChatView: View {
                         .foregroundStyle(.red)
                     Spacer()
                     Button {
+                        Haptics.light()
                         viewModel.errorMessage = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -46,21 +50,54 @@ struct ChatView: View {
                 .background(Color(.systemGray6))
             }
 
+            // Remaining video analyses banner for free users
+            if !subscriptionManager.isSubscribed && subscriptionManager.hasCheckedStatus {
+                HStack(spacing: 6) {
+                    Image(systemName: "video.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(subscriptionManager.remainingVideoAnalyses) of \(subscriptionManager.videoAnalysisLimit) free video analyses remaining")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Upgrade") { Haptics.light(); showPaywall = true }
+                        .font(.caption.bold())
+                        .foregroundStyle(.appAccent)
+                        .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+            }
+
             ChatInputBar(
                 text: $viewModel.inputText,
+                clubType: $viewModel.stagedClubType,
+                cameraAngle: $viewModel.stagedCameraAngle,
                 isStreaming: viewModel.isStreaming,
                 stagedThumbnailPath: viewModel.stagedThumbnailPath,
                 onSend: { viewModel.sendMessage() },
                 onStop: { viewModel.stopStreaming() },
-                onVideoTap: { showVideoOptions = true },
+                onRecordVideo: { activeSheet = .videoRecorder },
+                onChooseFromLibrary: { activeSheet = .videoPicker },
                 onClearVideo: { viewModel.clearStagedVideo() }
             )
         }
         .navigationTitle(viewModel.currentConversation.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Haptics.soft()
+                    showHistory = true
+                } label: {
+                    Image(systemName: "list.bullet")
+                }
+                .disabled(viewModel.isStreaming || viewModel.isAnalyzingVideo)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    Haptics.medium()
                     viewModel.startNewConversation()
                 } label: {
                     Image(systemName: "plus.message")
@@ -79,23 +116,28 @@ struct ChatView: View {
                 }
             }
         }
-        .confirmationDialog("Add Video", isPresented: $showVideoOptions) {
-            Button("Record Video") {
-                activeSheet = .videoRecorder
-            }
-            Button("Choose from Library") {
-                activeSheet = .videoPicker
-            }
-            Button("Cancel", role: .cancel) {}
-        }
         .onAppear {
-            viewModel.configure(appState: appState, memoryManager: memoryManager)
+            viewModel.configure(appState: appState, memoryManager: memoryManager, subscriptionManager: subscriptionManager)
             if let initialConversation {
                 viewModel.loadConversation(initialConversation)
             }
         }
+        .onChange(of: viewModel.showUpgradePrompt) { _, show in
+            if show {
+                showPaywall = true
+                viewModel.showUpgradePrompt = false
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(showCloseButton: true)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .startNewConversation)) { _ in
             viewModel.startNewConversation()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .loadConversation)) { notification in
+            if let conversation = notification.object as? Conversation {
+                viewModel.loadConversation(conversation)
+            }
         }
     }
 
@@ -151,6 +193,7 @@ struct ChatView: View {
 
     private func suggestionButton(_ text: String) -> some View {
         Button {
+            Haptics.light()
             viewModel.inputText = text
             viewModel.sendMessage()
         } label: {
@@ -212,17 +255,21 @@ struct ChatView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: viewModel.currentConversation.messages.count) {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                // Scroll so the latest message starts near the top — don't chase the bottom
+                let messages = viewModel.currentConversation.messages
+                if let lastMessage = messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(lastMessage.id, anchor: .top)
+                    }
                 }
-            }
-            .onChange(of: viewModel.currentConversation.messages.last?.content) {
-                proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: viewModel.isAnalyzingVideo) {
                 if viewModel.isAnalyzingVideo {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                    let messages = viewModel.currentConversation.messages
+                    if let lastMessage = messages.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(lastMessage.id, anchor: .top)
+                        }
                     }
                 }
             }
@@ -284,16 +331,64 @@ struct ChatView: View {
 struct SettingsSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(SwingMemoryManager.self) private var memoryManager
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
     @State private var handicapText = ""
     @State private var skillLevel: SkillLevel = .beginner
     @State private var showResetConfirmation = false
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Subscription") {
+                    HStack {
+                        Text("Current Plan")
+                        Spacer()
+                        Text(subscriptionManager.tierDisplayName)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !subscriptionManager.isSubscribed {
+                        HStack {
+                            Text("Video Analyses")
+                            Spacer()
+                            Text("\(subscriptionManager.videoAnalysesThisMonth) of \(subscriptionManager.videoAnalysisLimit) used")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Button {
+                            Haptics.light()
+                            showPaywall = true
+                        } label: {
+                            HStack {
+                                Text("Upgrade to Pro")
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    } else {
+                        if subscriptionManager.isInTrialPeriod {
+                            HStack {
+                                Text("Status")
+                                Spacer()
+                                Text("Free Trial")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Button("Manage Subscription") {
+                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    }
+                }
+
                 Section("Profile") {
                     TextField("Name", text: $name)
 
@@ -304,6 +399,11 @@ struct SettingsSheet: View {
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
+                            .onChange(of: handicapText) {
+                                if let hcp = Double(handicapText) {
+                                    skillLevel = SkillLevel.from(handicap: hcp)
+                                }
+                            }
                     }
 
                     Picker("Skill Level", selection: $skillLevel) {
@@ -314,7 +414,15 @@ struct SettingsSheet: View {
                 }
 
                 Section("Swing Memory") {
-                    if memoryManager.swingProfile.isEmpty {
+                    if !subscriptionManager.canAccessSwingMemory {
+                        HStack(spacing: 8) {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                            Text("Upgrade to Pro to unlock swing memory and progress tracking.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if memoryManager.swingProfile.isEmpty {
                         Text("Chat with Caddie to build your swing profile.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -332,6 +440,7 @@ struct SettingsSheet: View {
 
                 Section {
                     Button("Reset Everything", role: .destructive) {
+                        Haptics.rigid()
                         showResetConfirmation = true
                     }
                 }
@@ -341,6 +450,7 @@ struct SettingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
+                        Haptics.light()
                         let handicap = Double(handicapText)
                         appState.updateProfile(
                             name: name,
@@ -353,12 +463,14 @@ struct SettingsSheet: View {
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
+                        Haptics.light()
                         dismiss()
                     }
                 }
             }
             .alert("Reset Everything?", isPresented: $showResetConfirmation) {
                 Button("Reset", role: .destructive) {
+                    Haptics.rigid()
                     memoryManager.clearProfile()
                     appState.resetOnboarding()
                     dismiss()
@@ -371,6 +483,9 @@ struct SettingsSheet: View {
                 name = appState.userProfile.name
                 handicapText = appState.userProfile.handicap.map { String($0) } ?? ""
                 skillLevel = appState.userProfile.skillLevel
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(showCloseButton: true)
             }
         }
     }

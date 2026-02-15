@@ -3,6 +3,7 @@ import Foundation
 @Observable
 class SwingMemoryManager {
     var swingProfile: SwingProfile
+    private var isUpdating = false
 
     init() {
         self.swingProfile = UserDefaultsManager.loadSwingProfile()
@@ -48,6 +49,15 @@ class SwingMemoryManager {
 
     func updateProfile(from conversation: Conversation, hasVideo: Bool = false) async {
         debugLog("updateProfile called with \(conversation.messages.count) messages, hasVideo: \(hasVideo)")
+
+        // Prevent concurrent updates from corrupting profile data
+        guard !isUpdating else {
+            debugLog("Skipped — update already in progress")
+            return
+        }
+        isUpdating = true
+        defer { isUpdating = false }
+
         guard conversation.messages.count >= 2 else {
             debugLog("Skipped — not enough messages")
             return
@@ -62,7 +72,7 @@ class SwingMemoryManager {
            let json = String(data: data, encoding: .utf8) {
             currentProfileJSON = json
         } else {
-            currentProfileJSON = "{}"
+            currentProfileJSON = "{\"summary\":\"\",\"identifiedIssues\":[],\"strengths\":[],\"currentFocusAreas\":[]}"
         }
 
         let issueNames = SwingIssueData.all.map(\.name)
@@ -274,9 +284,9 @@ class SwingMemoryManager {
         if let data = line.data(using: .utf8) {
             if FileManager.default.fileExists(atPath: logFile.path) {
                 if let handle = try? FileHandle(forWritingTo: logFile) {
+                    defer { handle.closeFile() }
                     handle.seekToEndOfFile()
                     handle.write(data)
-                    handle.closeFile()
                 }
             } else {
                 try? data.write(to: logFile)

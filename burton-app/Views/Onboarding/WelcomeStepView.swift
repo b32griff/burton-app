@@ -37,6 +37,7 @@ struct WelcomeStepView: View {
                         .padding()
                         .background(.white, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(.plain)
                 .padding(.horizontal, 32)
             }
 

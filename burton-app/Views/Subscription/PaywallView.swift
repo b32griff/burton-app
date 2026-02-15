@@ -44,7 +44,7 @@ struct PaywallView: View {
                 VStack {
                     HStack {
                         Spacer()
-                        Button { dismiss() } label: {
+                        Button { Haptics.light(); dismiss() } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.title2)
                                 .foregroundStyle(.white.opacity(0.7))
@@ -81,23 +81,32 @@ struct PaywallView: View {
 
     private var featureList: some View {
         VStack(alignment: .leading, spacing: 12) {
-            featureRow(icon: "video.fill", text: "Unlimited swing video analysis")
-            featureRow(icon: "bubble.left.and.text.bubble.right.fill", text: "24/7 AI coaching chat")
-            featureRow(icon: "brain.head.profile", text: "Personalized swing memory")
-            featureRow(icon: "list.bullet.clipboard", text: "Custom drill recommendations")
+            featureRow(icon: "video.fill", text: "Unlimited swing video analysis", subtitle: "Free: 2/month")
+            featureRow(icon: "figure.golf", text: "All 74 drills, every difficulty", subtitle: "Free: Beginner only")
+            featureRow(icon: "brain.head.profile", text: "Persistent swing memory", subtitle: "Free: Not available")
+            featureRow(icon: "chart.line.uptrend.xyaxis", text: "Progress tracking & history", subtitle: "Free: Not available")
         }
         .padding(.horizontal, 40)
     }
 
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.body)
-                .foregroundStyle(.green)
+    private func featureRow(icon: String, text: String, subtitle: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 14) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.green)
 
-            Text(text)
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.95))
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.95))
+            }
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.leading, 38)
+            }
         }
     }
 
@@ -110,7 +119,7 @@ struct PaywallView: View {
                     title: "Yearly",
                     priceLabel: "\(yearly.displayPrice)/year",
                     perMonthLabel: monthlyEquivalent(from: yearly),
-                    badge: "SAVE 50%",
+                    badge: "SAVE 33%",
                     isSelected: selectedProduct?.id == yearly.id
                 ) {
                     selectedProduct = yearly
@@ -141,10 +150,12 @@ struct PaywallView: View {
 
     private var purchaseButton: some View {
         Button {
+            Haptics.medium()
             if let product = selectedProduct {
                 Task {
                     await subscriptionManager.purchase(product)
                     if subscriptionManager.isSubscribed {
+                        Haptics.success()
                         onSubscribed?()
                     }
                 }
@@ -168,6 +179,7 @@ struct PaywallView: View {
             .padding()
             .background(.white, in: RoundedRectangle(cornerRadius: 14))
         }
+        .buttonStyle(.plain)
         .disabled(subscriptionManager.isLoading)
         .padding(.horizontal, 32)
     }
@@ -204,7 +216,7 @@ struct PaywallView: View {
     private var footerLinks: some View {
         VStack(spacing: 12) {
             if let onSkip {
-                Button(action: onSkip) {
+                Button { Haptics.light(); onSkip() } label: {
                     Text("Continue without trial")
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.6))
@@ -213,6 +225,7 @@ struct PaywallView: View {
             }
 
             Button {
+                Haptics.light()
                 Task { await subscriptionManager.restorePurchases() }
             } label: {
                 Text("Restore Purchases")
@@ -261,7 +274,7 @@ struct PlanCard: View {
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
+        Button { Haptics.selection(); onTap() } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {

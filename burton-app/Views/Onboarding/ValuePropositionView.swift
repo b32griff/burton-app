@@ -58,7 +58,7 @@ struct ValuePropositionView: View {
 
             Spacer()
 
-            Button(action: onContinue) {
+            Button { Haptics.light(); onContinue() } label: {
                 Text("Continue")
                     .font(.headline)
                     .foregroundStyle(.appAccent)
@@ -66,6 +66,7 @@ struct ValuePropositionView: View {
                     .padding()
                     .background(.white, in: RoundedRectangle(cornerRadius: 14))
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 32)
 
             Spacer()

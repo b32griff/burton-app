@@ -17,9 +17,31 @@ struct SkillLevelStepView: View {
                 .font(.body)
                 .foregroundStyle(.white.opacity(0.9))
 
+            // Handicap input
+            HStack(spacing: 12) {
+                Text("Handicap")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                TextField("Optional", text: $viewModel.handicapText)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(width: 100)
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
+                    .onChange(of: viewModel.handicapText) {
+                        if let hcp = Double(viewModel.handicapText) {
+                            viewModel.selectedSkillLevel = SkillLevel.from(handicap: hcp)
+                        }
+                    }
+            }
+            .padding(.horizontal, 32)
+
             VStack(spacing: 12) {
                 ForEach(SkillLevel.allCases) { level in
                     Button {
+                        Haptics.selection()
                         viewModel.selectedSkillLevel = level
                     } label: {
                         HStack(spacing: 16) {
@@ -60,6 +82,7 @@ struct SkillLevelStepView: View {
 
             HStack(spacing: 16) {
                 Button {
+                    Haptics.light()
                     viewModel.previousStep()
                 } label: {
                     Text("Back")
@@ -71,6 +94,7 @@ struct SkillLevelStepView: View {
                 }
 
                 Button {
+                    Haptics.light()
                     viewModel.nextStep()
                 } label: {
                     Text("Continue")
@@ -80,6 +104,7 @@ struct SkillLevelStepView: View {
                         .padding()
                         .background(.white, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 32)
 
