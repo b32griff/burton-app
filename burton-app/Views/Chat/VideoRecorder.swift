@@ -7,11 +7,13 @@ struct VideoRecorder: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.mediaTypes = ["public.movie"]
-        picker.videoMaximumDuration = 30
-        picker.videoQuality = .typeMedium
-        picker.cameraCaptureMode = .video
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            picker.sourceType = .camera
+            picker.mediaTypes = ["public.movie"]
+            picker.videoMaximumDuration = 30
+            picker.videoQuality = .typeMedium
+            picker.cameraCaptureMode = .video
+        }
         picker.delegate = context.coordinator
         return picker
     }
@@ -41,7 +43,8 @@ struct VideoRecorder: UIViewControllerRepresentable {
                     try FileManager.default.copyItem(at: videoURL, to: tempURL)
                     onRecord(tempURL)
                 } catch {
-                    // Fall through to dismiss
+                    // Use the original URL directly as a fallback
+                    onRecord(videoURL)
                 }
             }
             dismiss()

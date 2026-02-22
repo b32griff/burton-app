@@ -4,6 +4,7 @@ import SwiftUI
 class OnboardingViewModel {
     var currentStep = 0
     var name = ""
+    var handicapText = ""
     var selectedSkillLevel: SkillLevel = .beginner
     var selectedGoals: Set<ImprovementGoal> = []
 
@@ -75,8 +76,10 @@ class OnboardingViewModel {
     }
 
     func completeOnboarding(appState: AppState) {
+        let handicap = Double(handicapText)
         appState.completeOnboarding(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            handicap: handicap,
             skillLevel: selectedSkillLevel,
             goals: Array(selectedGoals)
         )

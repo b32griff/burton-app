@@ -66,13 +66,17 @@ export default async function handler(req) {
       system,
       messages,
       stream = true,
-      max_tokens = 2048,
+      max_tokens = 16000,
     } = body;
 
-    // Build the request to Anthropic with prompt caching on system prompt
+    // Build the request to Anthropic with prompt caching and extended thinking
     const anthropicBody = {
       model: "claude-sonnet-4-5-20250929",
       max_tokens,
+      thinking: {
+        type: "enabled",
+        budget_tokens: 10000,
+      },
       system: [
         {
           type: "text",

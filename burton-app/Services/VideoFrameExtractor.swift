@@ -3,10 +3,10 @@ import UIKit
 
 struct VideoFrameExtractor {
 
-    /// Extracts 12 weighted key frames from a golf swing video.
-    /// More frames are concentrated around the critical phases (downswing, impact, early follow-through)
-    /// where the swing moves fastest and the most important positions occur.
-    static func extractKeyFrames(from url: URL, maxDimension: CGFloat = 640) async throws -> [Data] {
+    /// Extracts 10 weighted key frames from a golf swing video.
+    /// Extra frames are concentrated in the transition-through-impact zone (45-80% of the swing)
+    /// where the swing moves fastest and the most important checkpoint positions occur.
+    static func extractKeyFrames(from url: URL, maxDimension: CGFloat = 1024) async throws -> [Data] {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
@@ -22,35 +22,32 @@ struct VideoFrameExtractor {
     // Weighted frame positions as fractions of total video duration.
     // A typical golf swing video: setup → takeaway → top → transition → downswing → impact → follow-through → finish
     //
-    // Frame distribution (12 frames):
+    // Frame distribution (10 frames) — extra density in the transition-through-impact zone (45-80%)
+    // where the swing moves fastest and the most important checkpoint positions occur:
     //  0.00  Setup/Address
-    //  0.10  Early Takeaway
-    //  0.25  Mid-Backswing
-    //  0.38  Top of Backswing
-    //  0.48  Transition (top → down)
-    //  0.56  Early Downswing
-    //  0.64  Late Downswing
-    //  0.72  Impact Zone (pre-impact)
-    //  0.78  Impact
-    //  0.84  Early Follow-through
-    //  0.92  Late Follow-through
+    //  0.15  Takeaway
+    //  0.32  Mid-Backswing
+    //  0.45  Top of Backswing
+    //  0.55  Transition
+    //  0.65  Downswing
+    //  0.74  Pre-Impact
+    //  0.80  Impact
+    //  0.90  Follow-through
     //  1.00  Finish
     private static let weightedPositions: [Double] = [
-        0.00, 0.10, 0.25, 0.38, 0.48, 0.56, 0.64, 0.72, 0.78, 0.84, 0.92, 1.00
+        0.00, 0.15, 0.32, 0.45, 0.55, 0.65, 0.74, 0.80, 0.90, 1.00
     ]
 
     static let phaseLabels: [String] = [
         "Setup/Address",
-        "Early Takeaway",
+        "Takeaway",
         "Mid-Backswing",
         "Top of Backswing",
         "Transition",
-        "Early Downswing",
-        "Late Downswing",
+        "Downswing",
         "Pre-Impact",
         "Impact",
-        "Early Follow-through",
-        "Late Follow-through",
+        "Follow-through",
         "Finish"
     ]
 
@@ -64,9 +61,9 @@ struct VideoFrameExtractor {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: maxDimension, height: maxDimension)
-        // Tighter tolerance for more precise frame capture around impact
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.05, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.05, preferredTimescale: 600)
+        // Tight tolerance for precise frame capture, especially around impact
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.03, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.03, preferredTimescale: 600)
 
         var frames: [Data] = []
 
@@ -76,7 +73,7 @@ struct VideoFrameExtractor {
             let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
             let uiImage = UIImage(cgImage: cgImage)
 
-            if let jpegData = uiImage.jpegData(compressionQuality: 0.5) {
+            if let jpegData = uiImage.jpegData(compressionQuality: 0.55) {
                 frames.append(jpegData)
             }
         }

@@ -55,5 +55,8 @@ struct UserDefaultsManager {
         UserDefaults.standard.removeObject(forKey: profileKey)
         UserDefaults.standard.removeObject(forKey: conversationsKey)
         UserDefaults.standard.removeObject(forKey: swingProfileKey)
+        UserDefaults.standard.removeObject(forKey: "video_analysis_count")
+        UserDefaults.standard.removeObject(forKey: "video_analysis_month")
+        UserDefaults.standard.removeObject(forKey: "video_analysis_year")
     }
 }

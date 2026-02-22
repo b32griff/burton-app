@@ -11,13 +11,15 @@ struct ChatMessage: Identifiable, Codable {
     var content: String
     let timestamp: Date
     var imageReferences: [String]
+    var videoPath: String?
 
-    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), imageReferences: [String] = []) {
+    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), imageReferences: [String] = [], videoPath: String? = nil) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.imageReferences = imageReferences
+        self.videoPath = videoPath
     }
 
     init(from decoder: Decoder) throws {
@@ -27,5 +29,6 @@ struct ChatMessage: Identifiable, Codable {
         content = try container.decodeIfPresent(String.self, forKey: .content) ?? ""
         timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
         imageReferences = try container.decodeIfPresent([String].self, forKey: .imageReferences) ?? []
+        videoPath = try container.decodeIfPresent(String.self, forKey: .videoPath)
     }
 }

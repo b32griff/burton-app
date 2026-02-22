@@ -1,9 +1,9 @@
 import SwiftUI
-import StoreKit
+import RevenueCat
 
 struct PaywallView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
-    @State private var selectedProduct: Product?
+    @State private var selectedPackage: Package?
     var onSubscribed: (() -> Void)?
     var onSkip: (() -> Void)?
     var showCloseButton: Bool = false
@@ -69,7 +69,7 @@ struct PaywallView: View {
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
 
-            Text("Start your 7-day free trial and get unlimited access to Caddie AI.")
+            Text("Start your 3-day free trial and get unlimited access to Caddie AI.")
                 .font(.body)
                 .foregroundStyle(.white.opacity(0.9))
                 .multilineTextAlignment(.center)
@@ -81,7 +81,7 @@ struct PaywallView: View {
 
     private var featureList: some View {
         VStack(alignment: .leading, spacing: 12) {
-            featureRow(icon: "video.fill", text: "Unlimited swing video analysis", subtitle: "Free: 2/month")
+            featureRow(icon: "video.fill", text: "Unlimited swing video analysis", subtitle: "Free: 5/month")
             featureRow(icon: "figure.golf", text: "All 74 drills, every difficulty", subtitle: "Free: Beginner only")
             featureRow(icon: "brain.head.profile", text: "Persistent swing memory", subtitle: "Free: Not available")
             featureRow(icon: "chart.line.uptrend.xyaxis", text: "Progress tracking & history", subtitle: "Free: Not available")
@@ -110,78 +110,81 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Plan Cards
+    // MARK: - Plan Card
 
     private var planCards: some View {
         VStack(spacing: 12) {
-            if let yearly = subscriptionManager.yearlyProduct {
-                PlanCard(
-                    title: "Yearly",
-                    priceLabel: "\(yearly.displayPrice)/year",
-                    perMonthLabel: monthlyEquivalent(from: yearly),
-                    badge: "SAVE 33%",
-                    isSelected: selectedProduct?.id == yearly.id
-                ) {
-                    selectedProduct = yearly
-                }
-            }
-
-            if let monthly = subscriptionManager.monthlyProduct {
+            if let monthly = subscriptionManager.monthlyPackage {
                 PlanCard(
                     title: "Monthly",
-                    priceLabel: "\(monthly.displayPrice)/month",
+                    priceLabel: "\(monthly.localizedPriceString)/month",
                     perMonthLabel: nil,
                     badge: nil,
-                    isSelected: selectedProduct?.id == monthly.id
-                ) {
-                    selectedProduct = monthly
-                }
+                    isSelected: true
+                ) {}
             }
         }
         .padding(.horizontal, 24)
         .onAppear {
-            if selectedProduct == nil {
-                selectedProduct = subscriptionManager.yearlyProduct ?? subscriptionManager.monthlyProduct
-            }
+            selectedPackage = subscriptionManager.monthlyPackage
         }
     }
 
     // MARK: - Purchase Button
 
     private var purchaseButton: some View {
-        Button {
-            Haptics.medium()
-            if let product = selectedProduct {
-                Task {
-                    await subscriptionManager.purchase(product)
-                    if subscriptionManager.isSubscribed {
-                        Haptics.success()
-                        onSubscribed?()
-                    }
-                }
-            } else {
-                // No products loaded (simulator/testing) — skip through
-                onSubscribed?()
-                onSkip?()
-            }
-        } label: {
-            Group {
-                if subscriptionManager.isLoading {
-                    ProgressView()
-                        .tint(.appAccent)
-                } else {
-                    Text("Start Free Trial")
+        VStack(spacing: 12) {
+            if subscriptionManager.monthlyPackage == nil && subscriptionManager.purchaseError != nil {
+                // Offerings failed to load — show retry
+                Button {
+                    Haptics.medium()
+                    Task { await subscriptionManager.fetchOfferings() }
+                } label: {
+                    Text("Retry Loading")
                         .font(.headline)
                         .foregroundStyle(.appAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(.white, in: RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 32)
+            } else {
+                Button {
+                    Haptics.medium()
+                    guard let package = selectedPackage else { return }
+                    Task {
+                        await subscriptionManager.purchase(package)
+                        if subscriptionManager.isSubscribed {
+                            Haptics.success()
+                            onSubscribed?()
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    Group {
+                        if subscriptionManager.isLoading {
+                            ProgressView()
+                                .tint(.appAccent)
+                        } else {
+                            Text(purchaseButtonTitle)
+                                .font(.headline)
+                                .foregroundStyle(.appAccent)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .disabled(subscriptionManager.isLoading || selectedPackage == nil)
+                .padding(.horizontal, 32)
             }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(.white, in: RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(.plain)
-        .disabled(subscriptionManager.isLoading)
-        .padding(.horizontal, 32)
+    }
+
+    private var purchaseButtonTitle: String {
+        "Start Free Trial"
     }
 
     // MARK: - Trial Disclaimer
@@ -204,11 +207,10 @@ struct PaywallView: View {
     }
 
     private var disclaimerText: String {
-        guard let product = selectedProduct else {
-            return "7-day free trial. Cancel anytime."
+        guard let package = selectedPackage else {
+            return "3-day free trial. Cancel anytime."
         }
-        let period = product.id == "yearly_sub" ? "year" : "month"
-        return "7-day free trial, then \(product.displayPrice) per \(period). Cancel anytime."
+        return "3-day free trial, then \(package.localizedPriceString) per month. Cancel anytime."
     }
 
     // MARK: - Footer Links
@@ -244,7 +246,7 @@ struct PaywallView: View {
                     .foregroundStyle(.white.opacity(0.4))
 
                 Link("Privacy Policy",
-                     destination: URL(string: "https://burtongriffin.com/privacy")!)
+                     destination: URL(string: "https://b32griff.github.io/burton-app/privacy.html")!)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.6))
             }
@@ -252,15 +254,6 @@ struct PaywallView: View {
         .padding(.top, 8)
     }
 
-    // MARK: - Helpers
-
-    private func monthlyEquivalent(from yearlyProduct: Product) -> String {
-        let monthly = yearlyProduct.price / 12
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = yearlyProduct.priceFormatStyle.locale
-        return (formatter.string(from: monthly as NSDecimalNumber) ?? "") + "/mo"
-    }
 }
 
 // MARK: - Plan Card

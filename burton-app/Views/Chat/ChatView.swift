@@ -1,4 +1,5 @@
 import SwiftUI
+import RevenueCatUI
 
 enum ChatSheet: Identifiable {
     case videoPicker, videoRecorder
@@ -208,19 +209,23 @@ struct ChatView: View {
         .padding(.horizontal, 24)
     }
 
+    @State private var scrollAreaHeight: CGFloat = 0
+
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 2) {
+                VStack(spacing: 2) {
+                    // Push messages to bottom (like iMessage)
+                    Spacer(minLength: 0)
+
                     let messages = viewModel.currentConversation.messages
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         let isLastInGroup = isLastMessageInGroup(at: index, in: messages)
                         let showTimestamp = shouldShowTimestamp(at: index, in: messages)
-
                         VStack(spacing: 0) {
                             if showTimestamp {
-                                Text(message.timestamp, style: .time)
-                                    .font(.caption2)
+                                Text(relativeTimestamp(for: message.timestamp))
+                                    .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .padding(.vertical, 8)
                             }
@@ -230,12 +235,11 @@ struct ChatView: View {
                                 isLastInGroup: isLastInGroup,
                                 isActivelyStreaming: viewModel.isStreaming && index == messages.count - 1
                             )
-                                .padding(.bottom, isLastInGroup ? 8 : 0)
+                            .padding(.bottom, isLastInGroup ? 4 : 0)
                         }
                         .id(message.id)
                     }
 
-                    // Video analyzing indicator
                     if viewModel.isAnalyzingVideo {
                         HStack(spacing: 8) {
                             ProgressView()
@@ -244,31 +248,41 @@ struct ChatView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 4)
                     }
 
                     Color.clear
-                        .frame(height: 1)
+                        .frame(height: 0)
                         .id("bottom")
                 }
-                .padding(.vertical, 12)
+                .padding(.top, 12)
+                .frame(minHeight: scrollAreaHeight)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: viewModel.currentConversation.messages.count) {
-                // Scroll so the latest message starts near the top — don't chase the bottom
-                let messages = viewModel.currentConversation.messages
-                if let lastMessage = messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(lastMessage.id, anchor: .top)
+            .background(
+                GeometryReader { geo in
+                    Color.clear.onAppear { scrollAreaHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, h in scrollAreaHeight = h }
+                }
+            )
+            .onAppear {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel.currentConversation.id) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: viewModel.scrollToBottomTrigger) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo("bottom")
                     }
                 }
             }
-            .onChange(of: viewModel.isAnalyzingVideo) {
-                if viewModel.isAnalyzingVideo {
-                    let messages = viewModel.currentConversation.messages
-                    if let lastMessage = messages.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(lastMessage.id, anchor: .top)
+            .onChange(of: viewModel.isStreaming) { _, streaming in
+                if streaming {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            proxy.scrollTo("bottom")
                         }
                     }
                 }
@@ -311,7 +325,10 @@ struct ChatView: View {
             }
         }
 
-        return Array(suggestions.prefix(4))
+        // Always add on-course help as the last suggestion
+        suggestions.append(("I'm on the course — one swing thought", "figure.golf"))
+
+        return Array(suggestions.prefix(5))
     }
 
     private func isLastMessageInGroup(at index: Int, in messages: [ChatMessage]) -> Bool {
@@ -323,6 +340,28 @@ struct ChatView: View {
         guard index > 0 else { return true }
         let gap = messages[index].timestamp.timeIntervalSince(messages[index - 1].timestamp)
         return gap > 300 // Show timestamp if 5+ minutes between messages
+    }
+
+    private func relativeTimestamp(for date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        let timeString = timeFormatter.string(from: date)
+
+        if calendar.isDateInToday(date) {
+            return "Today \(timeString)"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday \(timeString)"
+        } else if let daysAgo = calendar.dateComponents([.day], from: date, to: now).day, daysAgo < 7 {
+            let dayFormatter = DateFormatter()
+            dayFormatter.dateFormat = "EEEE"
+            return "\(dayFormatter.string(from: date)) \(timeString)"
+        } else {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MMM d, yyyy"
+            return "\(dateFormatter.string(from: date)) \(timeString)"
+        }
     }
 }
 
@@ -339,6 +378,7 @@ struct SettingsSheet: View {
     @State private var skillLevel: SkillLevel = .beginner
     @State private var showResetConfirmation = false
     @State private var showPaywall = false
+    @State private var showCustomerCenter = false
 
     var body: some View {
         NavigationStack {
@@ -382,9 +422,8 @@ struct SettingsSheet: View {
                         }
 
                         Button("Manage Subscription") {
-                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                                UIApplication.shared.open(url)
-                            }
+                            Haptics.light()
+                            showCustomerCenter = true
                         }
                     }
                 }
@@ -486,6 +525,9 @@ struct SettingsSheet: View {
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView(showCloseButton: true)
+            }
+            .sheet(isPresented: $showCustomerCenter) {
+                CustomerCenterView()
             }
         }
     }

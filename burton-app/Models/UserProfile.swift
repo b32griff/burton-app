@@ -25,6 +25,15 @@ enum SkillLevel: String, Codable, CaseIterable, Identifiable {
         case .scratch: "trophy.fill"
         }
     }
+
+    static func from(handicap: Double) -> SkillLevel {
+        switch handicap {
+        case ..<5: return .scratch
+        case 5..<15: return .advanced
+        case 15..<25: return .intermediate
+        default: return .beginner
+        }
+    }
 }
 
 enum ImprovementGoal: String, Codable, CaseIterable, Identifiable {

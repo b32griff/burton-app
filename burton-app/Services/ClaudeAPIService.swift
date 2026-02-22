@@ -4,16 +4,16 @@ import Foundation
 struct ClaudeAPIService {
     static var backendURL = URL(string: "https://burton-app.vercel.app/api/chat")!
 
-    private static var deviceId: String {
+    private static let deviceId: String = {
         UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-    }
+    }()
 
     // MARK: - Streaming
 
     static func streamMessage(
         systemPrompt: String,
         messages: [[String: Any]],
-        maxTokens: Int = 2048
+        maxTokens: Int = 4096
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -34,6 +34,7 @@ struct ClaudeAPIService {
                     let session = URLSession(configuration: config)
 
                     let (bytes, response) = try await session.bytes(for: request)
+                    defer { session.invalidateAndCancel() }
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw APIError.invalidResponse
@@ -91,7 +92,6 @@ struct ClaudeAPIService {
                         // Idle timeout after content was delivered — stream is done
                     }
 
-                    session.invalidateAndCancel()
                     continuation.finish()
                 } catch let urlError as URLError where urlError.code == .cancelled && receivedContent {
                     continuation.finish()
@@ -118,7 +118,7 @@ struct ClaudeAPIService {
     static func sendSimpleMessage(
         systemPrompt: String,
         userMessage: String,
-        maxTokens: Int = 2048
+        maxTokens: Int = 4096
     ) async throws -> String {
         let messages: [[String: Any]] = [
             ["role": "user", "content": userMessage]
@@ -143,9 +143,14 @@ struct ClaudeAPIService {
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = json["content"] as? [[String: Any]],
-              let firstBlock = content.first,
-              let text = firstBlock["text"] as? String
+              let content = json["content"] as? [[String: Any]]
+        else {
+            throw APIError.parseError
+        }
+
+        // Find the text block — with extended thinking, the first block is "thinking", not "text"
+        guard let textBlock = content.first(where: { ($0["type"] as? String) == "text" }),
+              let text = textBlock["text"] as? String
         else {
             throw APIError.parseError
         }
@@ -159,13 +164,13 @@ struct ClaudeAPIService {
         systemPrompt: String,
         messages: [[String: Any]],
         stream: Bool,
-        maxTokens: Int = 2048
+        maxTokens: Int = 4096
     ) throws -> URLRequest {
         var request = URLRequest(url: backendURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
-        request.timeoutInterval = stream ? 120 : 60
+        request.timeoutInterval = stream ? 180 : 90
 
         let body: [String: Any] = [
             "system": systemPrompt,

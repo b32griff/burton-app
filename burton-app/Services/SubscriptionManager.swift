@@ -1,47 +1,106 @@
 import Foundation
-import StoreKit
+import RevenueCat
 
 @Observable
 class SubscriptionManager {
-    // MARK: - Product State
-    var products: [Product] = []
-    var monthlyProduct: Product?
-    var yearlyProduct: Product?
-
     // MARK: - Subscription State
     var isSubscribed = false
     var isInTrialPeriod = false
     var hasCheckedStatus = false
+
+    // MARK: - Product State (RevenueCat Packages)
+    var offerings: Offerings?
+    var monthlyPackage: Package?
+
+    // MARK: - Usage Tracking
+    private(set) var videoAnalysesThisMonth: Int = 0
+    let videoAnalysisLimit: Int = 5
 
     // MARK: - UI State
     var isLoading = false
     var purchaseError: String?
 
     // MARK: - Private
-    private var updateListenerTask: Task<Void, Never>?
-    private let productIDs: Set<String> = ["monthly_sub", "yearly_sub"]
+    private var customerInfoTask: Task<Void, Never>?
 
     init() {
-        updateListenerTask = listenForTransactionUpdates()
+        // Load cached subscription state immediately (prevents flash of free UI)
+        isSubscribed = UserDefaults.standard.bool(forKey: "is_subscribed")
+        isInTrialPeriod = UserDefaults.standard.bool(forKey: "is_in_trial")
+        if isSubscribed { hasCheckedStatus = true }
+
+        loadUsageData()
+        startListeningForCustomerInfo()
         Task {
-            await loadProducts()
+            await fetchOfferings()
             await updateSubscriptionStatus()
         }
     }
 
     deinit {
-        updateListenerTask?.cancel()
+        customerInfoTask?.cancel()
     }
 
-    // MARK: - Load Products
+    // MARK: - Feature Gating
+
+    var canAnalyzeVideo: Bool {
+        isSubscribed || videoAnalysesThisMonth < videoAnalysisLimit
+    }
+
+    var remainingVideoAnalyses: Int {
+        isSubscribed ? .max : max(0, videoAnalysisLimit - videoAnalysesThisMonth)
+    }
+
+    var canAccessAllDrills: Bool {
+        isSubscribed
+    }
+
+    var canAccessSwingMemory: Bool {
+        isSubscribed
+    }
+
+    var tierDisplayName: String {
+        isSubscribed ? "Pro" : "Free"
+    }
+
+    // MARK: - Usage Tracking
+
+    func incrementVideoAnalysis() {
+        resetMonthIfNeeded()
+        videoAnalysesThisMonth += 1
+        UserDefaults.standard.set(videoAnalysesThisMonth, forKey: "video_analysis_count")
+    }
+
+    private func resetMonthIfNeeded() {
+        let currentMonth = Calendar.current.component(.month, from: Date())
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let storedMonth = UserDefaults.standard.integer(forKey: "video_analysis_month")
+        let storedYear = UserDefaults.standard.integer(forKey: "video_analysis_year")
+
+        if currentMonth != storedMonth || currentYear != storedYear {
+            videoAnalysesThisMonth = 0
+            UserDefaults.standard.set(0, forKey: "video_analysis_count")
+            UserDefaults.standard.set(currentMonth, forKey: "video_analysis_month")
+            UserDefaults.standard.set(currentYear, forKey: "video_analysis_year")
+        }
+    }
+
+    private func loadUsageData() {
+        resetMonthIfNeeded()
+        videoAnalysesThisMonth = UserDefaults.standard.integer(forKey: "video_analysis_count")
+    }
+
+    // MARK: - Fetch Offerings
 
     @MainActor
-    func loadProducts() async {
+    func fetchOfferings() async {
         do {
-            let storeProducts = try await Product.products(for: productIDs)
-            products = storeProducts.sorted { $0.price < $1.price }
-            monthlyProduct = storeProducts.first { $0.id == "monthly_sub" }
-            yearlyProduct = storeProducts.first { $0.id == "yearly_sub" }
+            let rcOfferings = try await Purchases.shared.offerings()
+            offerings = rcOfferings
+
+            if let current = rcOfferings.current {
+                monthlyPackage = current.monthly
+            }
         } catch {
             purchaseError = "Failed to load subscription options."
         }
@@ -50,23 +109,14 @@ class SubscriptionManager {
     // MARK: - Purchase
 
     @MainActor
-    func purchase(_ product: Product) async {
+    func purchase(_ package: Package) async {
         isLoading = true
         purchaseError = nil
 
         do {
-            let result = try await product.purchase()
-            switch result {
-            case .success(let verification):
-                let transaction = try checkVerified(verification)
-                await transaction.finish()
-                await updateSubscriptionStatus()
-            case .userCancelled:
-                break
-            case .pending:
-                purchaseError = "Purchase is pending approval."
-            @unknown default:
-                break
+            let result = try await Purchases.shared.purchase(package: package)
+            if !result.userCancelled {
+                updateFromCustomerInfo(result.customerInfo)
             }
         } catch {
             purchaseError = "Purchase failed. Please try again."
@@ -82,11 +132,15 @@ class SubscriptionManager {
         isLoading = true
         purchaseError = nil
 
-        try? await AppStore.sync()
-        await updateSubscriptionStatus()
+        do {
+            let customerInfo = try await Purchases.shared.restorePurchases()
+            updateFromCustomerInfo(customerInfo)
 
-        if !isSubscribed {
-            purchaseError = "No active subscription found."
+            if !isSubscribed {
+                purchaseError = "No active subscription found."
+            }
+        } catch {
+            purchaseError = "Restore failed. Please try again."
         }
 
         isLoading = false
@@ -96,50 +150,57 @@ class SubscriptionManager {
 
     @MainActor
     func updateSubscriptionStatus() async {
-        var foundActive = false
+        do {
+            let customerInfo = try await Purchases.shared.customerInfo()
+            updateFromCustomerInfo(customerInfo)
+        } catch {
+            // Keep cached state on error
+            hasCheckedStatus = true
+        }
+    }
 
-        for await result in Transaction.currentEntitlements {
-            if let transaction = try? checkVerified(result) {
-                if productIDs.contains(transaction.productID) {
-                    foundActive = true
-                    if let offer = transaction.offer,
-                       offer.type == .introductory {
-                        isInTrialPeriod = true
-                    } else {
-                        isInTrialPeriod = false
-                    }
-                }
+    // MARK: - Customer Info Listener
+
+    private func startListeningForCustomerInfo() {
+        customerInfoTask = Task { [weak self] in
+            for await customerInfo in Purchases.shared.customerInfoStream {
+                await self?.updateFromCustomerInfo(customerInfo)
             }
         }
+    }
 
-        isSubscribed = foundActive
-        if !foundActive {
+    // MARK: - Process Customer Info
+
+    @MainActor
+    private func updateFromCustomerInfo(_ customerInfo: CustomerInfo) {
+        let entitlement = customerInfo.entitlements["Caddie AI Pro"]
+        isSubscribed = entitlement?.isActive ?? false
+
+        if let entitlement, entitlement.isActive {
+            isInTrialPeriod = entitlement.periodType == .trial
+        } else {
             isInTrialPeriod = false
         }
+
         hasCheckedStatus = true
+        persistSubscriptionState()
     }
 
-    // MARK: - Transaction Listener
+    // MARK: - Dev/Simulator Bypass
 
-    private func listenForTransactionUpdates() -> Task<Void, Never> {
-        Task.detached { [weak self] in
-            for await result in Transaction.updates {
-                if let transaction = try? self?.checkVerified(result) {
-                    await transaction.finish()
-                    await self?.updateSubscriptionStatus()
-                }
-            }
-        }
+    /// Activates subscription locally when RevenueCat products aren't available (simulator/testing)
+    @MainActor
+    func activateDevBypass() {
+        #if DEBUG
+        isSubscribed = true
+        isInTrialPeriod = true
+        hasCheckedStatus = true
+        persistSubscriptionState()
+        #endif
     }
 
-    // MARK: - Verification
-
-    private nonisolated func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
-        switch result {
-        case .verified(let value):
-            return value
-        case .unverified(_, let error):
-            throw error
-        }
+    private func persistSubscriptionState() {
+        UserDefaults.standard.set(isSubscribed, forKey: "is_subscribed")
+        UserDefaults.standard.set(isInTrialPeriod, forKey: "is_in_trial")
     }
 }

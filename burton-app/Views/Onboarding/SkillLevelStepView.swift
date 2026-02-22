@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SkillLevelStepView: View {
     @Bindable var viewModel: OnboardingViewModel
+    @FocusState private var handicapFocused: Bool
 
     var body: some View {
         VStack(spacing: 24) {
@@ -24,12 +25,20 @@ struct SkillLevelStepView: View {
                     .foregroundStyle(.white)
                 TextField("Optional", text: $viewModel.handicapText)
                     .keyboardType(.decimalPad)
+                    .focused($handicapFocused)
                     .multilineTextAlignment(.trailing)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(width: 100)
                     .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
                     .foregroundStyle(.white)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { handicapFocused = false }
+                                .foregroundStyle(.appAccent)
+                        }
+                    }
                     .onChange(of: viewModel.handicapText) {
                         if let hcp = Double(viewModel.handicapText) {
                             viewModel.selectedSkillLevel = SkillLevel.from(handicap: hcp)
@@ -41,6 +50,7 @@ struct SkillLevelStepView: View {
             VStack(spacing: 12) {
                 ForEach(SkillLevel.allCases) { level in
                     Button {
+                        handicapFocused = false
                         Haptics.selection()
                         viewModel.selectedSkillLevel = level
                     } label: {

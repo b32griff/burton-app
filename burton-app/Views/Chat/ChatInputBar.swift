@@ -102,111 +102,109 @@ struct ChatInputBar: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.bottom, 0)
+
+                Spacer().frame(height: 4)
             }
 
-            ZStack(alignment: .bottomLeading) {
-                // Options bubble
-                if showOptions {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Button {
-                            Haptics.light()
-                            withAnimation(.spring(duration: 0.2)) { showOptions = false }
-                            onRecordVideo()
-                        } label: {
-                            Label("Record", systemImage: "video.fill")
-                                .font(.subheadline)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-
-                        Divider().padding(.leading, 14)
-
-                        Button {
-                            Haptics.light()
-                            withAnimation(.spring(duration: 0.2)) { showOptions = false }
-                            onChooseFromLibrary()
-                        } label: {
-                            Label("Library", systemImage: "photo")
-                                .font(.subheadline)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(4)
-                    .fixedSize()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(.ultraThickMaterial)
-                            .shadow(color: .black.opacity(0.15), radius: 16, y: 6)
-                            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-                    )
-                    .padding(.leading, 10)
-                    .padding(.bottom, 54)
-                    .transition(.scale(scale: 0.5, anchor: .bottomLeading).combined(with: .opacity))
-                }
-
-                // Input bar
-                HStack(alignment: .bottom, spacing: 8) {
-                    // + button (iMessage style)
+            // Video options row (slides in above the input bar)
+            if showOptions {
+                HStack(spacing: 10) {
                     Button {
-                        Haptics.soft()
-                        withAnimation(.spring(duration: 0.25)) {
-                            showOptions.toggle()
-                        }
+                        Haptics.light()
+                        withAnimation(.snappy(duration: 0.2)) { showOptions = false }
+                        onRecordVideo()
                     } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 30))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(showOptions ? .appAccent : .secondary)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
+                        Label("Record", systemImage: "video.fill")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray5), in: Capsule())
+                            .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
 
-                    // Text field capsule with inline send button
-                    HStack(alignment: .bottom, spacing: 4) {
-                        TextField("Message", text: $text, axis: .vertical)
-                            .lineLimit(1...5)
-                            .textFieldStyle(.plain)
-                            .padding(.leading, 12)
-                            .padding(.vertical, 8)
-                            .onTapGesture {
-                                if showOptions {
-                                    withAnimation(.spring(duration: 0.2)) {
-                                        showOptions = false
-                                    }
+                    Button {
+                        Haptics.light()
+                        withAnimation(.snappy(duration: 0.2)) { showOptions = false }
+                        onChooseFromLibrary()
+                    } label: {
+                        Label("Library", systemImage: "photo")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray5), in: Capsule())
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            // Input bar
+            HStack(alignment: .bottom, spacing: 8) {
+                // + button
+                Button {
+                    Haptics.soft()
+                    withAnimation(.snappy(duration: 0.25)) {
+                        showOptions.toggle()
+                    }
+                } label: {
+                    Image(systemName: showOptions ? "xmark.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 32))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(showOptions ? .secondary : .secondary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                // Text field capsule with inline send button
+                HStack(alignment: .bottom, spacing: 4) {
+                    TextField("Ask anything", text: $text, axis: .vertical)
+                        .lineLimit(1...5)
+                        .textFieldStyle(.plain)
+                        .padding(.leading, 12)
+                        .padding(.vertical, 8)
+                        .onTapGesture {
+                            if showOptions {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    showOptions = false
                                 }
                             }
-
-                        if isStreaming && stagedThumbnailPath == nil {
-                            Button { Haptics.medium(); onStop() } label: {
-                                Image(systemName: "stop.circle.fill")
-                                    .font(.system(size: 26))
-                                    .foregroundStyle(.red)
-                                    .frame(width: 36, height: 36)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        } else if canSend {
-                            Button { Haptics.light(); onSend() } label: {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 26))
-                                    .foregroundStyle(Color(red: 0, green: 0.478, blue: 1.0))
-                                    .frame(width: 36, height: 36)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
                         }
+
+                    if isStreaming && stagedThumbnailPath == nil {
+                        Button { Haptics.medium(); onStop() } label: {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.red)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else if canSend {
+                        Button { Haptics.light(); onSend() } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.appAccent)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.trailing, 4)
-                    .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 22))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.trailing, 4)
+                .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color(.systemGray3), lineWidth: 0.5))
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
         .background(.bar)
     }

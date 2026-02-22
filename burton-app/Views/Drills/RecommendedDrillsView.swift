@@ -3,6 +3,8 @@ import SwiftUI
 struct RecommendedDrillsView: View {
     @Environment(AppState.self) private var appState
     @Environment(SwingMemoryManager.self) private var memoryManager
+    @Environment(SubscriptionManager.self) private var subscriptionManager
+    @State private var showPaywall = false
 
     var body: some View {
         ScrollView {
@@ -10,15 +12,90 @@ struct RecommendedDrillsView: View {
                 emptyState
             } else {
                 VStack(spacing: 0) {
+                    // Upgrade banner for free users
+                    if !subscriptionManager.canAccessAllDrills {
+                        upgradeCard
+                    }
+
                     ForEach(prioritySections, id: \.priority) { section in
                         if !section.items.isEmpty {
                             prioritySection(section)
                         }
                     }
+
+                    // Locked drills for free users
+                    if !lockedRecommendations.isEmpty {
+                        lockedSection
+                    }
                 }
             }
         }
         .navigationTitle("Your Drills")
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(showCloseButton: true)
+        }
+    }
+
+    // MARK: - Upgrade Card
+
+    private var upgradeCard: some View {
+        Button { Haptics.light(); showPaywall = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "lock.fill")
+                    .font(.title3)
+                    .foregroundStyle(.yellow)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Unlock All 74 Drills")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
+                    Text("Upgrade to Pro for intermediate & advanced drills")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    // MARK: - Locked Section
+
+    private var lockedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Pro Drills")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+
+            LazyVStack(spacing: 0) {
+                ForEach(lockedRecommendations) { item in
+                    Button { Haptics.light(); showPaywall = true } label: {
+                        DrillCard(drill: item.drill, reason: item.reason, priorityColor: .gray)
+                            .opacity(0.5)
+                            .overlay(alignment: .trailing) {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.trailing, 36)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     // MARK: - Empty State
@@ -102,8 +179,20 @@ struct RecommendedDrillsView: View {
         }
     }
 
+    private var accessibleRecommendations: [DrillItem] {
+        if subscriptionManager.canAccessAllDrills {
+            return recommendations
+        }
+        return recommendations.filter { $0.drill.difficulty == .beginner }
+    }
+
+    private var lockedRecommendations: [DrillItem] {
+        guard !subscriptionManager.canAccessAllDrills else { return [] }
+        return recommendations.filter { $0.drill.difficulty != .beginner }
+    }
+
     private var prioritySections: [PrioritySection] {
-        let items = recommendations
+        let items = accessibleRecommendations
         guard !items.isEmpty else { return [] }
 
         var sections: [PrioritySection] = []

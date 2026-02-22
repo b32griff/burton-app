@@ -63,8 +63,9 @@ class SwingMemoryManager {
             return
         }
 
+        // Use generous limit so the profile AI sees full drill recommendations and analysis
         let conversationSummary = conversation.messages.map { msg in
-            "\(msg.role.rawValue): \(msg.content.prefix(300))"
+            "\(msg.role.rawValue): \(msg.content.prefix(2000))"
         }.joined(separator: "\n")
 
         let currentProfileJSON: String
@@ -216,7 +217,8 @@ class SwingMemoryManager {
                 if let record = json["sessionRecord"] as? [String: Any] {
                     let rootCause = record["rootCause"] as? String ?? ""
                     let assignedDrill = record["assignedDrill"] as? String ?? ""
-                    let overallScore = (record["overallScore"] as? Int) ?? (Int(record["overallScore"] as? String ?? "") ?? 5)
+                    let rawScore = (record["overallScore"] as? Int) ?? (Int(record["overallScore"] as? String ?? "") ?? 5)
+                    let overallScore = max(1, min(10, rawScore))
 
                     if !rootCause.isEmpty {
                         let sessionRecord = SessionRecord(
