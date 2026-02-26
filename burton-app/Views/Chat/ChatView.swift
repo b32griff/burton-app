@@ -51,13 +51,13 @@ struct ChatView: View {
                 .background(Color(.systemGray6))
             }
 
-            // Remaining video analyses banner for free users
+            // Remaining usage banner for free users
             if !subscriptionManager.isSubscribed && subscriptionManager.hasCheckedStatus {
                 HStack(spacing: 6) {
-                    Image(systemName: "video.fill")
+                    Image(systemName: "sparkles")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text("\(subscriptionManager.remainingVideoAnalyses) of \(subscriptionManager.videoAnalysisLimit) free video analyses remaining")
+                    Text("\(subscriptionManager.remainingChatMessages) chats \u{2022} \(subscriptionManager.remainingVideoAnalyses) videos left")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -393,9 +393,15 @@ struct SettingsSheet: View {
 
                     if !subscriptionManager.isSubscribed {
                         HStack {
-                            Text("Video Analyses")
+                            Text("Videos")
                             Spacer()
-                            Text("\(subscriptionManager.videoAnalysesThisMonth) of \(subscriptionManager.videoAnalysisLimit) used")
+                            Text("\(subscriptionManager.remainingVideoAnalyses) of \(subscriptionManager.videoAnalysisLimit) left")
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Chat Messages")
+                            Spacer()
+                            Text("\(subscriptionManager.remainingChatMessages) of \(subscriptionManager.chatMessageLimit) left")
                                 .foregroundStyle(.secondary)
                         }
 
@@ -475,6 +481,12 @@ struct SettingsSheet: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section("Legal") {
+                    Link("Terms of Use (EULA)", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+
+                    Link("Privacy Policy", destination: URL(string: "https://super-halva-39ad89.netlify.app/privacy.html")!)
                 }
 
                 Section {

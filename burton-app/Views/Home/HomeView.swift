@@ -452,7 +452,7 @@ struct HomeView: View {
                     Text("Unlock Caddie Pro")
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)
-                    Text("\(subscriptionManager.videoAnalysesThisMonth)/\(subscriptionManager.videoAnalysisLimit) free videos used")
+                    Text("\(subscriptionManager.remainingChatMessages) chats \u{2022} \(subscriptionManager.remainingVideoAnalyses) videos left")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.7))
 
@@ -493,8 +493,14 @@ struct HomeView: View {
     }
 
     private var usageFraction: CGFloat {
-        guard subscriptionManager.videoAnalysisLimit > 0 else { return 0 }
-        return CGFloat(subscriptionManager.videoAnalysesThisMonth) / CGFloat(subscriptionManager.videoAnalysisLimit)
+        // Show the higher usage ratio between chats and videos
+        let chatFraction = subscriptionManager.chatMessageLimit > 0
+            ? CGFloat(subscriptionManager.chatMessageLimit - subscriptionManager.remainingChatMessages) / CGFloat(subscriptionManager.chatMessageLimit)
+            : 0
+        let videoFraction = subscriptionManager.videoAnalysisLimit > 0
+            ? CGFloat(subscriptionManager.videoAnalysisLimit - subscriptionManager.remainingVideoAnalyses) / CGFloat(subscriptionManager.videoAnalysisLimit)
+            : 0
+        return max(chatFraction, videoFraction)
     }
 
     // MARK: - Helpers

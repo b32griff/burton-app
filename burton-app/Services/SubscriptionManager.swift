@@ -11,10 +11,25 @@ class SubscriptionManager {
     // MARK: - Product State (RevenueCat Packages)
     var offerings: Offerings?
     var monthlyPackage: Package?
+    var yearlyPackage: Package?
 
-    // MARK: - Usage Tracking
+    // MARK: - Usage Limits
+    // Paid (monthly reset)
+    let videoAnalysisLimitPaid: Int = 30
+    let chatMessageLimitPaid: Int = 150
+    let conversationLimitPaid: Int = 30
+    // Free (lifetime)
+    let videoAnalysisLimitFree: Int = 3
+    let chatMessageLimitFree: Int = 10
+
+    // MARK: - Usage Tracking (paid — monthly)
     private(set) var videoAnalysesThisMonth: Int = 0
-    let videoAnalysisLimit: Int = 5
+    private(set) var chatMessagesThisMonth: Int = 0
+    private(set) var conversationsThisMonth: Int = 0
+
+    // MARK: - Usage Tracking (free — lifetime)
+    private(set) var lifetimeVideoAnalyses: Int = 0
+    private(set) var lifetimeChatMessages: Int = 0
 
     // MARK: - UI State
     var isLoading = false
@@ -44,11 +59,52 @@ class SubscriptionManager {
     // MARK: - Feature Gating
 
     var canAnalyzeVideo: Bool {
-        isSubscribed || videoAnalysesThisMonth < videoAnalysisLimit
+        if isSubscribed {
+            return videoAnalysesThisMonth < videoAnalysisLimitPaid
+        } else {
+            return lifetimeVideoAnalyses < videoAnalysisLimitFree
+        }
+    }
+
+    var canSendChat: Bool {
+        if isSubscribed {
+            return chatMessagesThisMonth < chatMessageLimitPaid
+        } else {
+            return lifetimeChatMessages < chatMessageLimitFree
+        }
+    }
+
+    var canStartConversation: Bool {
+        if isSubscribed {
+            return conversationsThisMonth < conversationLimitPaid
+        } else {
+            return true // free users limited by message counts, not conversations
+        }
     }
 
     var remainingVideoAnalyses: Int {
-        isSubscribed ? .max : max(0, videoAnalysisLimit - videoAnalysesThisMonth)
+        if isSubscribed {
+            return max(0, videoAnalysisLimitPaid - videoAnalysesThisMonth)
+        } else {
+            return max(0, videoAnalysisLimitFree - lifetimeVideoAnalyses)
+        }
+    }
+
+    var remainingChatMessages: Int {
+        if isSubscribed {
+            return max(0, chatMessageLimitPaid - chatMessagesThisMonth)
+        } else {
+            return max(0, chatMessageLimitFree - lifetimeChatMessages)
+        }
+    }
+
+    /// Display limit for the current tier
+    var videoAnalysisLimit: Int {
+        isSubscribed ? videoAnalysisLimitPaid : videoAnalysisLimitFree
+    }
+
+    var chatMessageLimit: Int {
+        isSubscribed ? chatMessageLimitPaid : chatMessageLimitFree
     }
 
     var canAccessAllDrills: Bool {
@@ -66,9 +122,31 @@ class SubscriptionManager {
     // MARK: - Usage Tracking
 
     func incrementVideoAnalysis() {
+        if isSubscribed {
+            resetMonthIfNeeded()
+            videoAnalysesThisMonth += 1
+            UserDefaults.standard.set(videoAnalysesThisMonth, forKey: "video_analysis_count")
+        } else {
+            lifetimeVideoAnalyses += 1
+            UserDefaults.standard.set(lifetimeVideoAnalyses, forKey: "lifetime_video_analyses")
+        }
+    }
+
+    func incrementChatMessage() {
+        if isSubscribed {
+            resetMonthIfNeeded()
+            chatMessagesThisMonth += 1
+            UserDefaults.standard.set(chatMessagesThisMonth, forKey: "chat_message_count")
+        } else {
+            lifetimeChatMessages += 1
+            UserDefaults.standard.set(lifetimeChatMessages, forKey: "lifetime_chat_messages")
+        }
+    }
+
+    func incrementConversation() {
         resetMonthIfNeeded()
-        videoAnalysesThisMonth += 1
-        UserDefaults.standard.set(videoAnalysesThisMonth, forKey: "video_analysis_count")
+        conversationsThisMonth += 1
+        UserDefaults.standard.set(conversationsThisMonth, forKey: "conversation_count")
     }
 
     private func resetMonthIfNeeded() {
@@ -79,7 +157,11 @@ class SubscriptionManager {
 
         if currentMonth != storedMonth || currentYear != storedYear {
             videoAnalysesThisMonth = 0
+            chatMessagesThisMonth = 0
+            conversationsThisMonth = 0
             UserDefaults.standard.set(0, forKey: "video_analysis_count")
+            UserDefaults.standard.set(0, forKey: "chat_message_count")
+            UserDefaults.standard.set(0, forKey: "conversation_count")
             UserDefaults.standard.set(currentMonth, forKey: "video_analysis_month")
             UserDefaults.standard.set(currentYear, forKey: "video_analysis_year")
         }
@@ -88,6 +170,10 @@ class SubscriptionManager {
     private func loadUsageData() {
         resetMonthIfNeeded()
         videoAnalysesThisMonth = UserDefaults.standard.integer(forKey: "video_analysis_count")
+        chatMessagesThisMonth = UserDefaults.standard.integer(forKey: "chat_message_count")
+        conversationsThisMonth = UserDefaults.standard.integer(forKey: "conversation_count")
+        lifetimeVideoAnalyses = UserDefaults.standard.integer(forKey: "lifetime_video_analyses")
+        lifetimeChatMessages = UserDefaults.standard.integer(forKey: "lifetime_chat_messages")
     }
 
     // MARK: - Fetch Offerings
@@ -100,6 +186,7 @@ class SubscriptionManager {
 
             if let current = rcOfferings.current {
                 monthlyPackage = current.monthly
+                yearlyPackage = current.annual
             }
         } catch {
             purchaseError = "Failed to load subscription options."

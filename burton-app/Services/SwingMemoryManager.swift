@@ -63,9 +63,9 @@ class SwingMemoryManager {
             return
         }
 
-        // Use generous limit so the profile AI sees full drill recommendations and analysis
-        let conversationSummary = conversation.messages.map { msg in
-            "\(msg.role.rawValue): \(msg.content.prefix(2000))"
+        // Send only last 6 messages at 500 chars each to control token costs
+        let conversationSummary = conversation.messages.suffix(6).map { msg in
+            "\(msg.role.rawValue): \(msg.content.prefix(500))"
         }.joined(separator: "\n")
 
         let currentProfileJSON: String
@@ -77,46 +77,18 @@ class SwingMemoryManager {
         }
 
         let issueNames = SwingIssueData.all.map(\.name)
-        let drillCatalog = DrillData.all.map { "\($0.id): \($0.name) (\($0.category.rawValue), \($0.difficulty.rawValue))" }.joined(separator: "\n")
+        let drillIDs = DrillData.all.map(\.id).joined(separator: ", ")
 
         let systemPrompt = """
-        You are a golf coaching data analyst. Given a conversation between a golf coach and student, update the student's swing profile JSON. Merge new information with existing data — don't remove things unless explicitly corrected.
-
-        IMPORTANT: For "identifiedIssues" and "prioritizedIssues", use values from this list when applicable: \(issueNames.joined(separator: ", ")).
-
-        For "prioritizedIssues", assign each issue a priority:
-        - "high": Most impactful problem to fix first. Usually 1-2 max.
-        - "medium": Important but secondary.
-        - "low": Minor or awareness-level.
-
-        For "recommendedDrills", pick the MOST RELEVANT drills for THIS specific user based on what you observed in the conversation (including any video analysis). Use ONLY drill IDs from this catalog:
-        \(drillCatalog)
-
-        Each recommended drill needs:
-        - "drillID": exact ID from the catalog above
-        - "reason": 1 sentence explaining WHY this drill helps THIS user specifically (reference their actual swing issues, not generic advice)
-        - "priority": "high", "medium", or "low"
-
-        Recommend 3-6 drills total. Prioritize drills that directly address the user's biggest issues.
-
-        For "sessionRecord", summarize THIS session as a single coaching record:
-        - "rootCause": The PRIMARY swing fault or issue discussed (one phrase, e.g. "early extension", "weak grip", "over-the-top path"). Pick the most important one.
-        - "assignedDrill": The name of the PRIMARY drill you recommended. Use the drill name, not ID.
-        - "overallScore": Rate the golfer's current overall swing quality 1-10. 1 = severe issues, 5 = average amateur, 7 = solid ball striker, 10 = tour quality.
-
-        \(hasVideo ? "This conversation includes VIDEO ANALYSIS. You can add, change, or REMOVE drills and issues based on what you see. If the user has fixed a previous issue, remove it and its drills." : "This is a TEXT-ONLY conversation. You may ADD new drills and issues, but keep all existing recommendedDrills from the current profile — do NOT remove any existing drills unless the user explicitly says they've fixed the issue.")
-
-        Respond with ONLY valid JSON (no markdown, no explanation):
-        {
-            "summary": "Overall assessment paragraph",
-            "identifiedIssues": ["issue1", "issue2"],
-            "prioritizedIssues": [{"name": "issue1", "priority": "high"}],
-            "recommendedDrills": [{"drillID": "drill_id", "reason": "Why this helps you specifically", "priority": "high"}],
-            "strengths": ["strength1"],
-            "currentFocusAreas": ["focus1"],
-            "progressNotes": [{"note": "Session summary"}],
-            "sessionRecord": {"rootCause": "primary fault", "assignedDrill": "drill name", "overallScore": 7}
-        }
+        Golf coaching data analyst. Update swing profile JSON from this conversation. Merge new info — don't remove unless corrected.
+        Use issue names from: \(issueNames.prefix(15).joined(separator: ", "))
+        Priorities: "high" (1-2 max), "medium", "low".
+        Recommend 3-6 drills using ONLY IDs from: \(drillIDs)
+        Each drill: drillID, reason (1 sentence), priority.
+        sessionRecord: rootCause (1 phrase), assignedDrill (name), overallScore (1-10).
+        \(hasVideo ? "VIDEO session: may add/remove drills and issues." : "TEXT session: add only, keep existing drills.")
+        Respond with ONLY valid JSON:
+        {"summary":"","identifiedIssues":[],"prioritizedIssues":[{"name":"","priority":""}],"recommendedDrills":[{"drillID":"","reason":"","priority":""}],"strengths":[],"currentFocusAreas":[],"progressNotes":[{"note":""}],"sessionRecord":{"rootCause":"","assignedDrill":"","overallScore":5}}
         """
 
         let userMessage = """
@@ -133,7 +105,8 @@ class SwingMemoryManager {
             let response = try await ClaudeAPIService.sendSimpleMessage(
                 systemPrompt: systemPrompt,
                 userMessage: userMessage,
-                maxTokens: 4096
+                maxTokens: 500,
+                taskType: "profile"
             )
 
             debugLog("Got response (\(response.count) chars): \(response.prefix(300))")

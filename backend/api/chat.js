@@ -2,22 +2,62 @@ export const config = {
   runtime: "edge",
 };
 
-// Simple in-memory rate limiting (resets on cold start)
-// Replace with Vercel KV for persistent rate limiting at scale
+// ---------------------------------------------------------------------------
+// Task-type routing: model, thinking config, token caps, and rate limits
+// ---------------------------------------------------------------------------
+const TASK_CONFIG = {
+  video_analysis: {
+    model: "claude-sonnet-4-5-20250929",
+    thinking: { type: "enabled", budget_tokens: 4096 },
+    maxOutputTokens: 1500,
+    rateLimit: 35,
+  },
+  chat: {
+    model: "claude-sonnet-4-5-20250929",
+    thinking: null,
+    maxOutputTokens: 800,
+    rateLimit: 160,
+  },
+  title: {
+    model: "claude-haiku-4-5-20241022",
+    thinking: null,
+    maxOutputTokens: 20,
+    rateLimit: 100,
+  },
+  summary: {
+    model: "claude-haiku-4-5-20241022",
+    thinking: null,
+    maxOutputTokens: 150,
+    rateLimit: 100,
+  },
+  profile: {
+    model: "claude-haiku-4-5-20241022",
+    thinking: null,
+    maxOutputTokens: 500,
+    rateLimit: 50,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// In-memory rate limiting (resets on cold start)
+// ---------------------------------------------------------------------------
 const rateLimitMap = new Map();
-const RATE_LIMIT = 50; // messages per window
 const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-function checkRateLimit(deviceId) {
+function checkRateLimit(deviceId, taskType) {
+  const config = TASK_CONFIG[taskType];
+  if (!config) return false;
+
+  const key = `${deviceId}:${taskType}`;
   const now = Date.now();
-  const entry = rateLimitMap.get(deviceId);
+  const entry = rateLimitMap.get(key);
 
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    rateLimitMap.set(deviceId, { windowStart: now, count: 1 });
+    rateLimitMap.set(key, { windowStart: now, count: 1 });
     return true;
   }
 
-  if (entry.count >= RATE_LIMIT) {
+  if (entry.count >= config.rateLimit) {
     return false;
   }
 
@@ -25,6 +65,9 @@ function checkRateLimit(deviceId) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Handler
+// ---------------------------------------------------------------------------
 export default async function handler(req) {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -45,13 +88,6 @@ export default async function handler(req) {
     );
   }
 
-  if (!checkRateLimit(deviceId)) {
-    return new Response(
-      JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-      { status: 429, headers: { "content-type": "application/json" } }
-    );
-  }
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return new Response(
@@ -62,21 +98,34 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const {
-      system,
-      messages,
-      stream = true,
-      max_tokens = 16000,
-    } = body;
+    const { system, messages, stream = true } = body;
 
-    // Build the request to Anthropic with prompt caching and extended thinking
+    // Backward compat: old clients that don't send task_type default to "chat"
+    const taskType = body.task_type || "chat";
+    const taskConfig = TASK_CONFIG[taskType];
+
+    if (!taskConfig) {
+      return new Response(
+        JSON.stringify({ error: "Invalid task_type" }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      );
+    }
+
+    if (!checkRateLimit(deviceId, taskType)) {
+      return new Response(
+        JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+        { status: 429, headers: { "content-type": "application/json" } }
+      );
+    }
+
+    // Build max_tokens: if thinking is enabled, add budget to output cap
+    const maxTokens = taskConfig.thinking
+      ? taskConfig.maxOutputTokens + taskConfig.thinking.budget_tokens
+      : taskConfig.maxOutputTokens;
+
     const anthropicBody = {
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens,
-      thinking: {
-        type: "enabled",
-        budget_tokens: 10000,
-      },
+      model: taskConfig.model,
+      max_tokens: maxTokens,
       system: [
         {
           type: "text",
@@ -87,6 +136,11 @@ export default async function handler(req) {
       messages,
       stream,
     };
+
+    // Only add thinking when configured (saves output-rate tokens on non-video calls)
+    if (taskConfig.thinking) {
+      anthropicBody.thinking = taskConfig.thinking;
+    }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",

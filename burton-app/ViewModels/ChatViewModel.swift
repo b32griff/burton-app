@@ -81,7 +81,7 @@ class ChatViewModel {
 
         // If there's a staged video, send as video analysis
         if let videoURL = stagedVideoURL {
-            // Gate: check video analysis limit for free users
+            // Gate: check video analysis limit
             if let sm = subscriptionManager, !sm.canAnalyzeVideo {
                 showUpgradePrompt = true
                 inputText = messageText // restore text so user doesn't lose it
@@ -98,6 +98,13 @@ class ChatViewModel {
             stagedCameraAngle = .dtl
             stagedShotMiss = .notSure
             sendVideoWithMessage(url: videoURL, text: messageText, thumbnailPath: thumbnailPath, clubType: clubType, cameraAngle: cameraAngle, shotMiss: shotMiss)
+            return
+        }
+
+        // Gate: check chat message limit
+        if let sm = subscriptionManager, !sm.canSendChat {
+            showUpgradePrompt = true
+            inputText = messageText
             return
         }
 
@@ -126,7 +133,8 @@ class ChatViewModel {
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
                     messages: apiMessages,
-                    maxTokens: 16000
+                    maxTokens: 800,
+                    taskType: "chat"
                 )
 
                 for try await chunk in stream {
@@ -159,6 +167,7 @@ class ChatViewModel {
                 if !failed {
                     self.autoTitleIfNeeded()
                     self.triggerProfileUpdateIfNeeded()
+                    self.subscriptionManager?.incrementChatMessage()
                 }
             }
         }
@@ -300,7 +309,8 @@ class ChatViewModel {
                 let stream = ClaudeAPIService.streamMessage(
                     systemPrompt: systemPrompt,
                     messages: messages,
-                    maxTokens: 16000
+                    maxTokens: 1500,
+                    taskType: "video_analysis"
                 )
 
                 var chunkCount = 0
@@ -375,6 +385,7 @@ class ChatViewModel {
         currentConversation = Conversation()
         inputText = ""
         errorMessage = nil
+        subscriptionManager?.incrementConversation()
     }
 
     func loadConversation(_ conversation: Conversation) {
@@ -413,7 +424,7 @@ class ChatViewModel {
             ? appState.conversations.prefix(3).compactMap(\.summary)
             : []
 
-        return SystemPromptBuilder.build(
+        return SystemPromptBuilder.buildCompact(
             userProfile: appState.userProfile,
             swingProfile: includeSwingMemory ? (memoryManager?.swingProfile ?? .empty) : .empty,
             recentConversationSummaries: recentSummaries,
@@ -429,7 +440,7 @@ class ChatViewModel {
             var content = msg.content
             // If this user message had video frames attached, annotate so Claude knows
             if msg.role == .user && (msg.videoPath != nil || !msg.imageReferences.isEmpty) {
-                content = "[Video frames of the golfer's swing were included with this message and you analyzed them in your response below. You have already seen this swing.]\n\n" + content
+                content = "[Video analysis was included with this message.]\n\n" + content
             }
 
             // Merge consecutive same-role messages to satisfy alternating role requirement
@@ -444,6 +455,16 @@ class ChatViewModel {
                 ])
             }
         }
+
+        // Trim to last 6 messages (3 user + 3 assistant turns) to control input token costs
+        if result.count > 6 {
+            result = Array(result.suffix(6))
+            // Ensure the first message is from the user (API requirement)
+            if let first = result.first, (first["role"] as? String) == "assistant" {
+                result.removeFirst()
+            }
+        }
+
         return result
     }
 
@@ -471,8 +492,10 @@ class ChatViewModel {
         Task {
             do {
                 let title = try await ClaudeAPIService.sendSimpleMessage(
-                    systemPrompt: "Generate a short title (3-6 words) for this golf coaching conversation. Respond with ONLY the title, no quotes, no hashtags, no markdown, no punctuation.",
-                    userMessage: firstUserMessage
+                    systemPrompt: "Generate a 3-6 word title for this golf chat. ONLY the title, no quotes or markdown.",
+                    userMessage: firstUserMessage,
+                    maxTokens: 20,
+                    taskType: "title"
                 )
 
                 await MainActor.run {
@@ -523,8 +546,10 @@ class ChatViewModel {
             Task {
                 do {
                     let title = try await ClaudeAPIService.sendSimpleMessage(
-                        systemPrompt: "Generate a short title (3-6 words) for this golf coaching conversation. Respond with ONLY the title, no quotes, no hashtags, no markdown, no punctuation. No thinking tags.",
-                        userMessage: messageContent
+                        systemPrompt: "Generate a 3-6 word title for this golf chat. ONLY the title, no quotes or markdown.",
+                        userMessage: messageContent,
+                        maxTokens: 20,
+                        taskType: "title"
                     )
 
                     await MainActor.run {
@@ -668,8 +693,10 @@ class ChatViewModel {
             do {
                 let messagesText = currentConversation.messages.map { "\($0.role.rawValue): \($0.content.prefix(200))" }.joined(separator: "\n")
                 let summary = try await ClaudeAPIService.sendSimpleMessage(
-                    systemPrompt: "Summarize this golf coaching conversation in 1-2 sentences. Respond with ONLY the summary.",
-                    userMessage: messagesText
+                    systemPrompt: "Summarize this golf coaching conversation in 1-2 sentences. ONLY the summary.",
+                    userMessage: messagesText,
+                    maxTokens: 150,
+                    taskType: "summary"
                 )
 
                 await MainActor.run {

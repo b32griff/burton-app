@@ -3,10 +3,9 @@ import UIKit
 
 struct VideoFrameExtractor {
 
-    /// Extracts 10 weighted key frames from a golf swing video.
-    /// Extra frames are concentrated in the transition-through-impact zone (45-80% of the swing)
-    /// where the swing moves fastest and the most important checkpoint positions occur.
-    static func extractKeyFrames(from url: URL, maxDimension: CGFloat = 1024) async throws -> [Data] {
+    /// Extracts 6 weighted key frames from a golf swing video.
+    /// Covers the critical checkpoint positions while keeping image token costs low.
+    static func extractKeyFrames(from url: URL, maxDimension: CGFloat = 720) async throws -> [Data] {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
@@ -19,35 +18,23 @@ struct VideoFrameExtractor {
         }
     }
 
-    // Weighted frame positions as fractions of total video duration.
-    // A typical golf swing video: setup → takeaway → top → transition → downswing → impact → follow-through → finish
-    //
-    // Frame distribution (10 frames) — extra density in the transition-through-impact zone (45-80%)
-    // where the swing moves fastest and the most important checkpoint positions occur:
+    // 6 frames covering the key swing checkpoints:
     //  0.00  Setup/Address
-    //  0.15  Takeaway
-    //  0.32  Mid-Backswing
-    //  0.45  Top of Backswing
-    //  0.55  Transition
-    //  0.65  Downswing
-    //  0.74  Pre-Impact
-    //  0.80  Impact
-    //  0.90  Follow-through
+    //  0.30  Top of Backswing
+    //  0.50  Transition
+    //  0.70  Downswing
+    //  0.82  Impact
     //  1.00  Finish
     private static let weightedPositions: [Double] = [
-        0.00, 0.15, 0.32, 0.45, 0.55, 0.65, 0.74, 0.80, 0.90, 1.00
+        0.00, 0.30, 0.50, 0.70, 0.82, 1.00
     ]
 
     static let phaseLabels: [String] = [
         "Setup/Address",
-        "Takeaway",
-        "Mid-Backswing",
         "Top of Backswing",
         "Transition",
         "Downswing",
-        "Pre-Impact",
         "Impact",
-        "Follow-through",
         "Finish"
     ]
 

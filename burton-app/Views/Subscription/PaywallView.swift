@@ -13,31 +13,32 @@ struct PaywallView: View {
         ZStack {
             AppGradient()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    Spacer().frame(height: 50)
+            VStack(spacing: 14) {
+                Spacer().frame(minHeight: 10, maxHeight: 40)
 
-                    // Header
-                    headerSection
+                // Header
+                headerSection
 
-                    // Feature list
-                    featureList
+                // Feature list
+                featureList
 
-                    // Plan cards
-                    planCards
+                // Plan cards
+                planCards
 
-                    // CTA button
-                    purchaseButton
+                // CTA button + reassurance
+                purchaseButton
 
-                    // Trial disclaimer
-                    trialDisclaimer
+                // Skip / Continue free
+                skipButton
 
-                    // Footer links
-                    footerLinks
+                // Trial disclaimer + footer
+                trialDisclaimer
 
-                    Spacer().frame(height: 20)
-                }
+                footerLinks
+
+                Spacer().frame(height: 8)
             }
+            .padding(.top, 20)
 
             // Close button (standalone paywall only)
             if showCloseButton {
@@ -61,51 +62,60 @@ struct PaywallView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 12) {
-            CaddieLogoView(size: 90, style: .glyph)
+        VStack(spacing: 10) {
+            CaddieLogoView(size: 80, style: .glyph)
 
-            Text("Unlock Your\nFull Potential")
-                .font(.largeTitle.bold())
+            Text("Know Exactly\nWhat to Fix")
+                .font(.title2.bold())
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
-
-            Text("Start your 3-day free trial and get unlimited access to Caddie AI.")
-                .font(.body)
-                .foregroundStyle(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     // MARK: - Feature List
 
     private var featureList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            featureRow(icon: "video.fill", text: "Unlimited swing video analysis", subtitle: "Free: 5/month")
-            featureRow(icon: "figure.golf", text: "All 74 drills, every difficulty", subtitle: "Free: Beginner only")
-            featureRow(icon: "brain.head.profile", text: "Persistent swing memory", subtitle: "Free: Not available")
-            featureRow(icon: "chart.line.uptrend.xyaxis", text: "Progress tracking & history", subtitle: "Free: Not available")
+        VStack(alignment: .leading, spacing: 10) {
+            featureRow(
+                text: "Instant swing feedback on every video",
+                subtitle: "Free: 3 lifetime analyses"
+            )
+            featureRow(
+                text: "Unlimited AI coaching chat",
+                subtitle: "Free: 10 lifetime messages"
+            )
+            featureRow(
+                text: "Caddie AI remembers your swing over time",
+                subtitle: "Free: Not available"
+            )
+            featureRow(
+                text: "Track progress and see what\u{2019}s improving",
+                subtitle: "Free: Not available"
+            )
         }
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 36)
     }
 
-    private func featureRow(icon: String, text: String, subtitle: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 14) {
+    private func featureRow(text: String, subtitle: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.body)
+                    .font(.subheadline)
                     .foregroundStyle(.green)
+                    .padding(.top, 1)
 
                 Text(text)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white.opacity(0.95))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let subtitle {
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.leading, 38)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.leading, 30)
             }
         }
     }
@@ -114,28 +124,48 @@ struct PaywallView: View {
 
     private var planCards: some View {
         VStack(spacing: 12) {
+            if let yearly = subscriptionManager.yearlyPackage {
+                PlanCard(
+                    title: "Yearly",
+                    priceLabel: "\(yearly.localizedPriceString)/year after trial",
+                    perMonthLabel: yearlyPerMonthLabel(for: yearly),
+                    badge: "SAVE 44%",
+                    isSelected: selectedPackage?.identifier == yearly.identifier
+                ) {
+                    selectedPackage = yearly
+                }
+            }
+
             if let monthly = subscriptionManager.monthlyPackage {
                 PlanCard(
                     title: "Monthly",
-                    priceLabel: "\(monthly.localizedPriceString)/month",
+                    priceLabel: "\(monthly.localizedPriceString)/month after trial",
                     perMonthLabel: nil,
                     badge: nil,
-                    isSelected: true
-                ) {}
+                    isSelected: selectedPackage?.identifier == monthly.identifier
+                ) {
+                    selectedPackage = monthly
+                }
             }
         }
         .padding(.horizontal, 24)
         .onAppear {
-            selectedPackage = subscriptionManager.monthlyPackage
+            // Default to yearly if available
+            selectedPackage = subscriptionManager.yearlyPackage ?? subscriptionManager.monthlyPackage
         }
+    }
+
+    private func yearlyPerMonthLabel(for package: Package) -> String {
+        let price = package.storeProduct.price as NSDecimalNumber
+        let monthly = price.doubleValue / 12.0
+        return String(format: "$%.2f/month", monthly)
     }
 
     // MARK: - Purchase Button
 
     private var purchaseButton: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             if subscriptionManager.monthlyPackage == nil && subscriptionManager.purchaseError != nil {
-                // Offerings failed to load — show retry
                 Button {
                     Haptics.medium()
                     Task { await subscriptionManager.fetchOfferings() }
@@ -167,24 +197,59 @@ struct PaywallView: View {
                             ProgressView()
                                 .tint(.appAccent)
                         } else {
-                            Text(purchaseButtonTitle)
+                            Text("Start My Free Trial")
                                 .font(.headline)
                                 .foregroundStyle(.appAccent)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(.vertical, 16)
                     .background(.white, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
                 .disabled(subscriptionManager.isLoading || selectedPackage == nil)
                 .padding(.horizontal, 32)
             }
+
+            Text(billingClarityText)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.65))
         }
     }
 
-    private var purchaseButtonTitle: String {
-        "Start Free Trial"
+    // MARK: - Skip Button
+
+    @ViewBuilder
+    private var skipButton: some View {
+        if let onSkip {
+            Button {
+                Haptics.light()
+                onSkip()
+            } label: {
+                Text("Continue with free version")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 32)
+        } else if showCloseButton {
+            Button {
+                Haptics.light()
+                dismiss()
+            } label: {
+                Text("Continue with free version")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 32)
+        }
     }
 
     // MARK: - Trial Disclaimer
@@ -199,59 +264,62 @@ struct PaywallView: View {
             }
 
             Text(disclaimerText)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }
     }
 
+    private var billingClarityText: String {
+        guard let package = selectedPackage else {
+            return "Select a plan above"
+        }
+        let isYearly = package.identifier == subscriptionManager.yearlyPackage?.identifier
+        if isYearly {
+            return "3-day free trial, then \(package.localizedPriceString)/year. Auto-renews until canceled."
+        }
+        return "3-day free trial, then \(package.localizedPriceString)/month. Auto-renews until canceled."
+    }
+
     private var disclaimerText: String {
         guard let package = selectedPackage else {
-            return "3-day free trial. Cancel anytime."
+            return "Cancel anytime. Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. Manage in Settings \u{203A} Apple ID \u{203A} Subscriptions."
         }
-        return "3-day free trial, then \(package.localizedPriceString) per month. Cancel anytime."
+        let isYearly = package.identifier == subscriptionManager.yearlyPackage?.identifier
+        let periodText = isYearly ? "\(package.localizedPriceString)/year" : "\(package.localizedPriceString)/month"
+        return "3-day free trial, then \(periodText). Cancel anytime. Payment will be charged to your Apple ID account at confirmation of purchase. Subscription automatically renews unless cancelled at least 24 hours before the end of the current period. Manage in Settings \u{203A} Apple ID \u{203A} Subscriptions."
     }
 
     // MARK: - Footer Links
 
     private var footerLinks: some View {
         VStack(spacing: 12) {
-            if let onSkip {
-                Button { Haptics.light(); onSkip() } label: {
-                    Text("Continue without trial")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .underline()
-                }
-            }
-
             Button {
                 Haptics.light()
                 Task { await subscriptionManager.restorePurchases() }
             } label: {
                 Text("Restore Purchases")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
             }
 
             HStack(spacing: 16) {
                 Link("Terms of Use",
                      destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
 
-                Text("|")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
+                Text("\u{2022}")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.3))
 
                 Link("Privacy Policy",
-                     destination: URL(string: "https://b32griff.github.io/burton-app/privacy.html")!)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
+                     destination: URL(string: "https://super-halva-39ad89.netlify.app/privacy.html")!)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
             }
         }
-        .padding(.top, 8)
     }
 
 }
@@ -290,8 +358,8 @@ struct PlanCard: View {
 
                     if let perMonthLabel {
                         Text(perMonthLabel)
-                            .font(.caption)
-                            .opacity(0.7)
+                            .font(.caption2)
+                            .opacity(0.6)
                     }
                 }
 
@@ -303,14 +371,14 @@ struct PlanCard: View {
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                isSelected ? Color.white.opacity(0.25) : Color.white.opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 12)
+                isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: 14)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 14)
                     .strokeBorder(
-                        isSelected ? Color.white : Color.clear,
-                        lineWidth: 2
+                        isSelected ? Color.white.opacity(0.9) : Color.clear,
+                        lineWidth: 2.5
                     )
             )
             .foregroundStyle(.white)

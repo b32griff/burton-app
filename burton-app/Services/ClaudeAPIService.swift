@@ -13,7 +13,8 @@ struct ClaudeAPIService {
     static func streamMessage(
         systemPrompt: String,
         messages: [[String: Any]],
-        maxTokens: Int = 4096
+        maxTokens: Int = 4096,
+        taskType: String = "chat"
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -24,7 +25,8 @@ struct ClaudeAPIService {
                         systemPrompt: systemPrompt,
                         messages: messages,
                         stream: true,
-                        maxTokens: maxTokens
+                        maxTokens: maxTokens,
+                        taskType: taskType
                     )
 
                     // Fresh session per stream
@@ -118,7 +120,8 @@ struct ClaudeAPIService {
     static func sendSimpleMessage(
         systemPrompt: String,
         userMessage: String,
-        maxTokens: Int = 4096
+        maxTokens: Int = 4096,
+        taskType: String = "chat"
     ) async throws -> String {
         let messages: [[String: Any]] = [
             ["role": "user", "content": userMessage]
@@ -128,7 +131,8 @@ struct ClaudeAPIService {
             systemPrompt: systemPrompt,
             messages: messages,
             stream: false,
-            maxTokens: maxTokens
+            maxTokens: maxTokens,
+            taskType: taskType
         )
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -164,7 +168,8 @@ struct ClaudeAPIService {
         systemPrompt: String,
         messages: [[String: Any]],
         stream: Bool,
-        maxTokens: Int = 4096
+        maxTokens: Int = 4096,
+        taskType: String = "chat"
     ) throws -> URLRequest {
         var request = URLRequest(url: backendURL)
         request.httpMethod = "POST"
@@ -176,7 +181,8 @@ struct ClaudeAPIService {
             "system": systemPrompt,
             "messages": messages,
             "stream": stream,
-            "max_tokens": maxTokens
+            "max_tokens": maxTokens,
+            "task_type": taskType
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
