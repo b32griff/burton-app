@@ -16,11 +16,11 @@ class SubscriptionManager {
     // MARK: - Usage Limits
     // Paid (monthly reset)
     let videoAnalysisLimitPaid: Int = 30
-    let chatMessageLimitPaid: Int = 150
+    let chatMessageLimitPaid: Int = 200
     let conversationLimitPaid: Int = 30
     // Free (lifetime)
     let videoAnalysisLimitFree: Int = 3
-    let chatMessageLimitFree: Int = 10
+    let chatMessageLimitFree: Int = 30
 
     // MARK: - Usage Tracking (paid — monthly)
     private(set) var videoAnalysesThisMonth: Int = 0

@@ -82,8 +82,8 @@ struct PaywallView: View {
                 subtitle: "Free: 3 lifetime analyses"
             )
             featureRow(
-                text: "Unlimited AI coaching chat",
-                subtitle: "Free: 10 lifetime messages"
+                text: "200 AI coaching messages per month",
+                subtitle: "Free: 30 lifetime messages"
             )
             featureRow(
                 text: "Caddie AI remembers your swing over time",
@@ -129,7 +129,7 @@ struct PaywallView: View {
                     title: "Yearly",
                     priceLabel: "\(yearly.localizedPriceString)/year after trial",
                     perMonthLabel: yearlyPerMonthLabel(for: yearly),
-                    badge: "SAVE 44%",
+                    badge: "SAVE 33%",
                     isSelected: selectedPackage?.identifier == yearly.identifier
                 ) {
                     selectedPackage = yearly
